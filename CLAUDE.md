@@ -129,3 +129,15 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 * **mypy enforcement**: Only enforced on `envs`,  `configs`,  `optim`,  `model`,  `cameras`,  `motors`,  `transport` modules. Other modules have `ignore_errors = true`.
 * **Line length**: 110 characters (ruff).
 * **Python**: ≥3.12 required; use `pyupgrade --py312-plus` conventions (e.g.,  `X | Y` union types).
+
+## Docs
+
+`docs/` 下部分文件属于项目维护者的个人文档系统：
+
+* `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护
+* `docs/README.md` — 官方文档站入口
+* `docs/pi05_so101_lora_pipeline.md` — **主文档**，Pi0.5 + SO-ARM101 LoRA 微调完整 Pipeline，所有技术细节围绕此文档
+* `docs/plan.md` — 日常开发计划与任务追踪
+* `docs/bug.md` — 开发过程中遇到的 bug 与解决方案记录
+
+**协作约定**：被问及 docs/ 下的文档时，优先读 `pi05_so101_lora_pipeline.md` / `plan.md` / `bug.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。

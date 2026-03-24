@@ -192,6 +192,31 @@ cameras = {
 * `observation.images.front` → 主视角
 * `observation.images.wrist` → 腕部视角
 
+### ⚠️ 电机和摄像头命名必须与代码一致
+
+`so_follower.py:53-59` 硬编码了电机字典的顺序：
+
+```python
+{
+    "shoulder_pan": Motor(1, ...),
+    "shoulder_lift": Motor(2, ...),
+    "elbow_flex": Motor(3, ...),
+    "wrist_flex": Motor(4, ...),
+    "wrist_roll": Motor(5, ...),
+    "gripper": Motor(6, ...),
+}
+```
+
+这个顺序决定了 `observation.state` 和 `action` 向量 (6,) 的维度语义。
+
+**常见踩坑**：标定时电机 ID 和代码不匹配，导致采集到的 state 向量里每个维度的物理含义都是错的。
+
+同样，摄像头 key（`observation.images.front`、`observation.images.wrist`）必须在录制和推理时保持一致。如果录制时摄像头叫 `cam_0`/`cam_1`，推理时也必须用同样的名字。
+
+只要你用 LeRobot 框架完成采集 → 训练 → 推理全流程，数据集特征的顺序自然和推理代码一致。**唯一会出问题的点就是电机标定 ID 与代码不一致。**
+
+---
+
 ### Pi0.5 如何处理这些特征
 
 源码 `configuration_pi05.py:118-140` 的 `validate_features()` 方法：
