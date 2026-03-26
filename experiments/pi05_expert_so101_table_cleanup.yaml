@@ -1,7 +1,12 @@
-# Pi0.5 train_expert_only fine-tuning for SO-ARM101 table-cleanup task
-# Freezes PaliGemma VLM (~2.7B), trains only Action Expert (~300M, ~5-10% params)
-# Usage: lerobot-train --yaml_config=experiments/pi05_expert_so101_table_cleanup.yaml
-# CLI overrides: lerobot-train --yaml_config=... --steps=10000 --batch_size=8
+# Pi0.5 全量微调 Action Expert for SO-ARM101 table-cleanup task
+# 冻结 PaliGemma VLM (~2.7B)，全量训练 Action Expert (~300M, ~5-10% 参数)
+#
+# Usage:
+#   lerobot-train --yaml_config=experiments/pi05_expert_so101_table_cleanup.yaml
+#
+# CLI overrides (覆盖 YAML 中的任意参数):
+#   lerobot-train --yaml_config=experiments/pi05_expert_so101_table_cleanup.yaml \
+#       --output_dir=/path/to/output --steps=10000 --batch_size=8
 
 # --- Dataset ---
 dataset:
@@ -12,18 +17,22 @@ policy:
   type: pi05
   pretrained_path: lerobot/pi05_base
   dtype: bfloat16
-  gradient_checkpointing: true
-  train_expert_only: true
-  compile_model: true
+  gradient_checkpointing: false      # 显存减半，速度降 ~20%
+  train_expert_only: true          # 冻结整个 PaliGemma VLM，仅训练 Action Expert
+  freeze_vision_encoder: true      # 显式冻结视觉塔
+  compile_model: true              # torch.compile 加速，首次编译慢 5-10 min
   device: cuda
-  push_to_hub: false
+  push_to_hub: false               # 必须显式关闭，默认 true 会报错
 
 # --- Training ---
-batch_size: 4
-steps: 8000
-save_freq: 2000
+batch_size: 4                      # 单卡 24GB 保守值，可根据显存调整
+steps: 8000                        # ~80 episodes, batch_size=4, ≈4 epochs
+save_freq: 2000                    # 每 2000 步保存 checkpoint
 log_freq: 50
-eval_freq: 0
+eval_freq: 0                      # SO-ARM101 无仿真环境，关闭评估
+seed: 1000
+num_workers: 4
+use_policy_training_preset: true   # 使用 Pi0.5 内置优化器/调度器预设
 
 # --- Output ---
 output_dir: /root/autodl-tmp/outputs/pi05_expert_so101

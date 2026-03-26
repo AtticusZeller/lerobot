@@ -1,6 +1,12 @@
-# Pi0.5 LoRA fine-tuning for SO-ARM101 table-cleanup task
-# Usage: lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml
-# CLI args override YAML values, e.g.: lerobot-train --yaml_config=... --steps=8000
+# Pi0.5 LoRA 微调 for SO-ARM101 table-cleanup task (备选方案，显存更低)
+# 通过 PEFT LoRA 适配器微调，仅更新 ~0.1-1% 参数
+#
+# Usage:
+#   lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml
+#
+# CLI overrides:
+#   lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml \
+#       --steps=8000 --batch_size=8
 
 # --- Dataset ---
 dataset:
@@ -27,6 +33,9 @@ steps: 5000
 save_freq: 1000
 log_freq: 50
 eval_freq: 0
+seed: 1000
+num_workers: 4
+use_policy_training_preset: true
 
 # --- Output ---
 output_dir: /root/autodl-tmp/outputs/pi05_lora_so101
