@@ -14,6 +14,7 @@
 5. [Async gRPC 分离式部署方案](#4-async-grpc-分离式部署方案)
 6. [端到端流程总结](#5-完整端到端流程总结)
 7. [显存估算](#6-单卡显存估算与建议)
+8. [附录A：训练结果验证](#附录-a训练结果验证)
 
 ---
 
@@ -401,6 +402,23 @@ lerobot-train \
 ```
 
 > 每次训练结果落在独立子目录，如 `/root/autodl-tmp/outputs/pi05_lora_so101/20260323_143022/`，便于多次实验对比。
+
+#### 方案 A-2：YAML 配置文件启动（推荐）
+
+上述 CLI 参数已整理为 YAML 配置文件，修改参数更方便：
+
+```bash
+# 直接用 YAML 启动（所有参数在文件中）
+lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml
+
+# CLI 参数覆盖 YAML（用于临时调参）
+lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml --steps=8000 --batch_size=8
+
+# 切换数据集也只需覆盖一个参数
+lerobot-train --yaml_config=experiments/pi05_lora_so101_table_cleanup.yaml --dataset.repo_id=Atticuxz/so101-new-task
+```
+
+> YAML 配置文件位于 `experiments/` 目录下，每个实验一个文件，便于版本管理和对比。
 
 > ⚠️ **必须加 `--policy.push_to_hub=false` **
 >
@@ -1064,6 +1082,130 @@ nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits -l
 * [LeRobot Pi0.5 文档](./pi05.mdx)
 * [LeRobot Async 推理文档](./async.mdx)
 * [LeRobot 安装指南](./installation)
+* [LoRA 基础概念](./what_is_lora.md)
+
+---
+
+## 附录 A：训练结果验证
+
+### 为什么 SO-ARM101 没有内置验证指标？
+
+LeRobot 的 `lerobot-eval` 依赖仿真环境（`gym.vector.VectorEnv`）来执行 rollouts 并计算 reward 和 success rate。但 `envs/` 下没有 SO-ARM101 对应的仿真器，因此：
+
+- `eval_freq=0`（关闭训练中评估）
+- 训练全程**只记录 Training Loss**，没有 validation loss
+- 推理验证只能通过 **离线脚本** 或 **实机测试**
+
+### Pi0.5 Loss 计算方式
+
+Pi0.5 使用 **Flow Matching** 作为动作生成范式，loss 是标准的 MSE：
+
+```python
+# modeling_pi05.py:730-783
+noise = sample_noise(actions.shape)           # 随机噪声
+time = sample_time(batch_size)                  # t ∈ [0, 1]
+
+x_t = t * noise + (1 - t) * actions            # 在噪声和动作之间插值
+v_t = noise - actions                            # 目标速度场
+
+v_pred = model(x_t, time)                       # 模型预测的速度
+loss = MSE(v_t, v_pred)                         # 对所有 action 维度和时间步求均值
+```
+
+训练时：`t` 越接近 1（噪声端），模型学习去噪；`t` 越接近 0（动作端），模型学习重建动作。
+
+### WandB 中应关注的关键曲线
+
+| WandB 字段 | 含义 | 期望形态 |
+|------------|------|----------|
+| `loss` | Flow Matching MSE scalar | 全程稳定下降 |
+| `loss_per_dim` | 各 action 维度的 loss 均值（数组） | 各维度大致均衡 |
+| `grad_norm` | 梯度范数 | 100 以下波动，无爆炸 |
+| `lr` | 学习率 | 按 warmup + decay 曲线变化 |
+| `num_learnable_params / num_total_params` | 可训练参数比例 | LoRA 应为 0.03%~1% |
+
+**收敛阶段参考**（以 5000 步、batch_size=4 为例）：
+
+| 阶段 | Steps | 期望 |
+|------|-------|------|
+| 快速下降期 | 0 ~ 1000 | Loss 从高位快速回落，下降斜率最大 |
+| 缓慢收敛期 | 1000 ~ 3000 | 下降速度减缓，曲线趋于平滑 |
+| 平台期 | 3000 ~ 5000 | Loss 接近平台，若仍有微降可延长训练 |
+
+### 过拟合信号识别
+
+**在有仿真器的任务中**：可以通过 `eval_freq` 的 eval loss 曲线对比训练 loss — 若 eval loss 上升而训练 loss 持续下降，则过拟合。
+
+**在 SO-ARM101 中**（无仿真器）：无法从训练曲线直接判断过拟合。过拟合的**间接信号**：
+- 数据集规模很小（< 500 episodes）但训练 steps 很多（> 10000）
+- `loss_per_dim` 中某一维度持续远高于其他维度
+- 实机测试时动作剧烈抖动或超出关节限位
+
+**缓解方法**：
+- 降低 `steps`（如从 10000 降到 5000）
+- 增加 `lora_dropout`（PEFT config 中的 dropout）
+- 使用更大的 `r` 值（提升 adapter 容量同时防止欠拟合）
+
+### 离线 Action Plotting（Checkpoint 横向对比）
+
+由于没有仿真环境，可通过**离线推理对比**来验证不同 checkpoint 的质量。
+
+**核心思路**：加载数据集的 batch，用 checkpoint 推理预测动作，和 ground-truth 动作画在同一张图上。
+
+**待实现脚本**：`scripts/eval_offline_action_plot.py`
+
+预期功能：
+```python
+# 伪代码
+for checkpoint_dir in [checkpoint_1000, checkpoint_3000, checkpoint_5000]:
+    policy = Pi05Policy.from_pretrained(checkpoint_dir)
+    for batch in dataset:
+        with torch.no_grad():
+            pred_actions = policy.select_action(batch)  # (B, chunk_size, action_dim)
+        gt_actions = batch["action"]                    # (B, chunk_size, action_dim)
+
+        # 按时间维度画线图，每个 action 维度一条线
+        plot_trajectories(pred_actions[0], gt_actions[0], step=checkpoint_step)
+
+    # 保存对比图到 outputs/checkpoint_eval/
+```
+
+**判断标准**：
+- 预测动作和 GT 动作轨迹**形状接近** → checkpoint 质量好
+- 预测动作在某些维度上**持续偏移**（固定偏差） → 可能是 action projection 层未充分适配
+- 预测动作**抖动剧烈** → 过拟合或 LoRA r 值太小
+
+### Checkpoint 选择流程总结
+
+```
+训练完成
+  ↓
+查看 wandb loss 曲线
+  ↓
+loss 正常收敛?
+  ├── 否 → 检查数据、配置、重训
+  └── 是 → 进入下一步
+  ↓
+选出 2-3 个关键 checkpoint（如 2000步 / 5000步 / 末步）
+  ↓
+运行离线 Action Plotting 对比
+  ↓
+哪个 checkpoint 的预测轨迹最接近 GT?
+  ↓
+选出最佳 checkpoint 用于实机部署
+  ↓
+实机测试（gRPC inference）
+  ↓
+验证动作是否平滑、合理
+```
+
+---
+
+
+
+* [LeRobot Pi0.5 文档](./pi05.mdx)
+* [LeRobot Async 推理文档](./async.mdx)
+* [LeRobot 安装指南](./installation)
 
 ---
 
@@ -1096,3 +1238,5 @@ nvidia-smi --query-gpu=memory.used,memory.total --format=csv,noheader,nounits -l
 * v1.0：初始版本，覆盖 LoRA 配置、数据集对齐、训练、gRPC 部署
 * v1.1：补充 `--policy.push_to_hub=false` 必须项、`train_expert_only` 与 LoRA 冲突警告、按数据量计算 steps 指南、社区全参微调命令对比
 * v1.2：新增 Section 1b「数据集格式转换与上传（v2.1 → v3.0）」，流程图补充 Step 1b/1c
+* v1.3：新增 YAML 配置文件启动方式（`--yaml_config`）、方案 A-2 文档；`experiments/` 目录放置实验配置
+* v1.4：策略切换至 `train_expert_only=true`（方案 B），暂不使用 LoRA；新增 `experiments/pi05_expert_so101_table_cleanup.yaml`

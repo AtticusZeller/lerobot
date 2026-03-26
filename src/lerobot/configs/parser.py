@@ -31,6 +31,7 @@ F = TypeVar("F", bound=Callable[..., object])
 
 PATH_KEY = "path"
 PLUGIN_DISCOVERY_SUFFIX = "discover_packages_path"
+YAML_CONFIG_KEY = "yaml_config"
 
 
 def get_cli_overrides(field_name: str, args: Sequence[str] | None = None) -> list[str] | None:
@@ -221,6 +222,9 @@ def wrap(config_path: Path | None = None) -> Callable[[F], F]:
                         # add the relevant CLI arg to the error message
                         raise PluginLoadError(f"{e}\nFailed plugin CLI Arg: {plugin_cli_arg}") from e
                     cli_args = filter_arg(plugin_cli_arg, cli_args)
+                yaml_config_cli = parse_arg(YAML_CONFIG_KEY, cli_args)
+                if yaml_config_cli:
+                    cli_args = filter_arg(YAML_CONFIG_KEY, cli_args)
                 config_path_cli = parse_arg("config_path", cli_args)
                 if has_method(argtype, "__get_path_fields__"):
                     path_fields = argtype.__get_path_fields__()
@@ -229,7 +233,8 @@ def wrap(config_path: Path | None = None) -> Callable[[F], F]:
                     cli_args = filter_arg("config_path", cli_args)
                     cfg = argtype.from_pretrained(config_path_cli, cli_args=cli_args)
                 else:
-                    cfg = draccus.parse(config_class=argtype, config_path=config_path, args=cli_args)
+                    effective_config_path = yaml_config_cli or config_path
+                    cfg = draccus.parse(config_class=argtype, config_path=effective_config_path, args=cli_args)
             response = fn(cfg, *args, **kwargs)
             return response
 
