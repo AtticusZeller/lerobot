@@ -223,6 +223,6 @@ print(stats["observation.state"]["q99"])
 
 ## 参考
 
-* [Pi0.5 + SO-ARM101 LoRA 微调完整 Pipeline](./pi05_so101_lora_pipeline.md)
+* [Pi0.5 + SO-ARM101 微调完整 Pipeline](./pi05_so101_pipeline.md)
 * LeRobot 源码: `src/lerobot/datasets/compute_stats.py`
 * LeRobot 源码: `src/lerobot/scripts/augment_dataset_quantile_stats.py`

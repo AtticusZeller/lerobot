@@ -147,4 +147,4 @@ LoRA 在表达能力和效率之间取得了最佳平衡，这也是它成为机
 
 - [LoRA: Low-Rank Adaptation of Large Language Models](https://arxiv.org/abs/2106.09685) — 原始论文
 - [PEFT 库文档](https://huggingface.co/docs/peft) — LeRobot 使用的底层库
-- `docs/pi05_so101_lora_pipeline.md` — LeRobot 中 Pi0.5 + SO-ARM101 的完整 LoRA 微调实战流程
+- `docs/pi05_so101_pipeline.md` — LeRobot 中 Pi0.5 + SO-ARM101 的完整微调实战流程
