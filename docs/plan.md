@@ -4,6 +4,80 @@
 
 ---
 
+## 2026-03-29 Daily Sync
+
+### 需求背景
+
+目前没有实机，但需要快速横向对比多种微调方案的效果。逐个在真机上部署评估太慢，计划用 **LeIsaac + IsaacLab 仿真环境** 替代实机，实现自动化批量评估，大幅加速迭代。
+
+### 核心任务：仿真批量评估 Pipeline
+
+**目标**: 建立"微调 → 仿真推理 → 自动评分"的闭环，快速筛选最优方案后再上实机验证。
+
+#### 1. 仿真推理环境搭建
+- [ ] 确认 LeIsaac SO-101 仿真环境可用（`LeIsaac-SO101-PickOrange-v0` 或自定义任务）
+- [ ] 验证 LeRobot Policy Server + LeIsaac `policy_inference.py` + `lerobot-pi05` 的端到端流程
+- [ ] 确认 `LeRobotServicePolicyClient` 对 pi05 action 维度的兼容性
+
+#### 2. 仿真数据集准备
+- [ ] 准备与仿真环境对应的训练数据集（仿真采集 or 已有仿真数据集）
+- [ ] 确保数据集格式、camera key、action 维度与仿真环境一致
+
+#### 3. 多方案微调对比
+- [ ] 定义待对比的微调方案矩阵（初步规划）：
+  - 微调方式: `train_expert_only` vs `LoRA` vs 全参微调
+  - 模型: `pi05` vs 其他候选（如 `smolvla`）
+  - 超参: steps / batch_size / learning_rate 等
+- [ ] 每种方案生成对应的 YAML 配置（`experiments/` 目录）
+
+#### 4. 自动化评估脚本
+- [ ] 编写批量评估脚本：遍历多个 checkpoint → 启动 Policy Server → 在仿真中跑 N 个 episode → 收集成功率/评分
+- [ ] 评分指标：任务完成率、子步骤得分（接近/抓取/运输/放置）、平均耗时
+- [ ] 输出汇总表（CSV/JSON），方便横向对比
+
+#### 5. 结果分析与实机验证
+- [ ] 根据仿真评估结果选出 Top 2-3 方案
+- [ ] 有实机后在真机上做最终验证（少量评估即可）
+
+### Next Steps
+
+- [ ] 搭建 LeIsaac 仿真推理环境，跑通 SO-101 + pi05 端到端
+- [ ] 编写自动化评估脚本框架
+- [ ] 准备第一批对比实验的 YAML 配置
+
+---
+
+## 2026-03-28 Daily Sync
+
+### Completed Today
+
+- [x] **确立实机评估方案**
+  - 建立两阶段评估流程：训练指标预筛（wandb loss/grad_norm） → 真机评估（π0.5 评分 rubric）
+  - 评分 rubric 参考 π0.5 论文：按子步骤打分（接近/抓取/运输/放置，每步 1 分）
+  - 评估方案文档: [eval.md](./eval.md)
+
+- [x] **建立推理部署文档**
+  - 基于 LeRobot async inference（gRPC 架构）整理推理部署流程
+  - 推理部署文档: [inference.md](./inference.md)
+  - 架构: GPU 服务器（policy_server）← gRPC → 笔记本（robot_client）← USB → SO-101
+
+- [x] **精简 pipeline 文档**
+  - 将 Section 4 推理部署内容精简为摘要+指向 inference.md
+  - 删除失效的 Action Plotting 相关内容
+  - 更新 Checkpoint 选择流程指向 eval.md
+
+- [x] **参考资料补充**
+  - 将 Seeed Studio LeRobot 文档和 HF 官方文档链接添加到 CLAUDE.md
+
+### Next Steps
+
+- [ ] **实机评估执行**
+  - 从训练好的 checkpoint 中选取 3–5 个候选（平台期前/中/后段）
+  - 按 eval.md 流程在真机上逐一评估，每个 checkpoint 评估 10 次
+  - 根据 π0.5 评分结果选择最佳 checkpoint
+
+---
+
 ## 2026-03-26 Daily Sync
 
 ### Completed Today
@@ -18,12 +92,12 @@
 
 ### Next Steps
 
-- [ ] **切换至 train_expert_only 方案训练**
+- [x] **切换至 train_expert_only 方案训练** ✅
   - 经 Gemini 讨论确认: `train_expert_only=true` 效果最好，**暂不使用 LoRA**
   - 冻结 PaliGemma VLM (~2.7B)，仅训练 Action Expert (~300M，~5-10% 参数)
   - 配置文件: `experiments/pi05_expert_so101_table_cleanup.yaml`
   - 启动命令: `lerobot-train --yaml_config=experiments/pi05_expert_so101_table_cleanup.yaml`
-  - 关注 wandb loss 曲线收敛情况，与之前 LoRA 实验对比
+  - 训练已完成，loss 曲线正常收敛
 
 ---
 
@@ -45,20 +119,17 @@
 
 ### Next Steps
 
-- [ ] **离线 Action Plotting 脚本开发**（待做）
-  - 从数据集批量加载 batch，用 `model.select_action()` 或 `model.forward()` 推理
-  - 对比: 预测动作轨迹 vs 数据集 ground-truth 动作轨迹（matplotlib 多维度折线图）
-  - 可用于 checkpoint 之间的横向对比（不同 step 的 checkpoint 输出差异）
-  - 脚本路径建议: `scripts/eval_offline_action_plot.py`
-
-- [ ] **Checkpoint 横向对比验证**
-  - 选出 2-3 个有代表性的 checkpoint（如: 训练前期、中期、最末期）
-  - 用上述离线 Action Plotting 脚本对比不同 checkpoint 的动作输出
-  - 选出动作轨迹最接近数据集动作分布的 checkpoint 作为最终选择
+- [ ] **Checkpoint 横向对比验证（实机）**
+  - 训练时每隔 1000 步保存一个 checkpoint（`save_freq: 1000`）
+  - 从 loss 平台期选取 3–5 个候选 checkpoint（前段 / 中段 / 后段各 1–2 个）
+  - 在真机上逐一部署测试，按 π0.5 评分 rubric 打分
+  - 评分标准与流程详见 [eval.md](./eval.md)
 
 - [ ] **实机部署验证**
-  - 使用 `policy_server.py` + `robot_client` 在真实 SO-ARM101 上运行 LoRA checkpoint
-  - 验证动作输出是否平滑、合理
+  - 使用 LeRobot async inference（`policy_server` + `robot_client`）在真实 SO-ARM101 上部署
+  - 按 π0.5 评分 rubric 逐子步骤打分（接近 → 抓取 → 运输 → 放置，每步 1 分）
+  - 每个 checkpoint 评估 10 次，穿插执行控制环境变化（参考 π0.5 论文）
+  - 评分定义见 [eval.md](./eval.md)，推理部署见 [inference.md](./inference.md)
 
 ---
 
@@ -128,19 +199,19 @@
   - LoRA 基础概念已整理至 `docs/what_is_lora.md`
   - Pi0.5 训练验证机制（wandb 曲线解读、收敛判断、过拟合识别）待补充到 `docs/pi05_so101_lora_pipeline.md`
 
-- [ ] **Checkpoint 使用方式整理**
+- [x] **Checkpoint 使用方式整理** ✅
   - `factory.py:493-514` 的 `use_peft` 分支会自动从 `adapter_config.json` 读取 base model 并加载 adapter
   - `policy_server.py:152` 的 `from_pretrained()` 直接传入 checkpoint 路径即可，无需额外 `use_peft` 参数
-  - 待补充到 `docs/pi05_so101_lora_pipeline.md`
+  - 已补充到 `docs/pi05_so101_lora_pipeline.md`
 
 - [ ] **实机部署验证**
-  - 使用 `lerobot.async_inference.policy_server` + `robot_client` 在真实 SO-ARM101 上跑训练好的 LoRA checkpoint
-  - 验证动作输出是否合理
+  - 使用 `lerobot.async_inference.policy_server` + `robot_client` 在真实 SO-ARM101 上部署 checkpoint
+  - 按 π0.5 评分 rubric 进行真机评估（见 [eval.md](./eval.md)）
 
 ---
 
 ### Notes / Blockers
 
-- **训练有效性已验证**: 5000 步训练 loss 曲线正常收敛，Pi0.5 Flow Matching MSE 形态符合预期
-- **剩余验证缺口**: 没有仿真环境的情况下，只能用离线 Action Plotting + 实机测试来最终验证。wandb Training Loss 是必要但不充分条件
+- **训练有效性已验证**: train_expert_only 训练 loss 曲线正常收敛，Pi0.5 Flow Matching MSE 形态符合预期
+- **剩余验证缺口**: 没有仿真环境的情况下，只能用真机测试来最终验证。wandb Training Loss 是必要但不充分条件
 - **关节顺序对齐已确认**: 关键约束是**实机标定 ID 必须与代码一致**，其余由 LeRobot 框架自动保证
