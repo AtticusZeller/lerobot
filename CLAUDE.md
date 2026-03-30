@@ -136,13 +136,13 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 * `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护
 * `docs/README.md` — 官方文档站入口
-* `docs/pi05_so101_pipeline.md` — **主文档**，Pi0.5 + SO-ARM101 微调完整 Pipeline，所有技术细节围绕此文档
+* `docs/so101_pipeline.md` — **主文档**，SO-ARM101 微调完整 Pipeline（通用），模型子文档：`so101_pi05.md` / `so101_smolvla.md`
 * `docs/plan.md` — 日常开发计划与任务追踪
 * `docs/bug.md` — 开发过程中遇到的 bug 与解决方案记录
 * `docs/eval.md` — 实机评估 SOP（π0.5 评分 rubric）
 * `docs/inference.md` — gRPC 异步推理部署文档
 
-**协作约定**：被问及 docs/ 下的文档时，优先读 `pi05_so101_pipeline.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+**协作约定**：被问及 docs/ 下的文档时，优先读 `so101_pipeline.md` / `so101_pi05.md` / `so101_smolvla.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
 
 ## References
 

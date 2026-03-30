@@ -750,7 +750,7 @@ bash batch_eval_sim.sh
 - LeIsaac 项目: https://github.com/huggingface/LeIsaac
 - LeIsaac 可用环境列表: `python scripts/environments/list_envs.py`
 - 评估流程文档: [eval.md](./eval.md)
-- 完整训练 Pipeline: [pi05_so101_pipeline.md](./pi05_so101_pipeline.md)
+- 完整训练 Pipeline: [so101_pipeline.md](./so101_pipeline.md)
 
 ---
 
