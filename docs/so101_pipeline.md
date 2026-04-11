@@ -77,15 +77,16 @@ hf auth whoami
 # 上传（Atticuxz 替换为你的 HF 用户名）
 hf upload Atticuxz/so101-table-cleanup \
     /root/autodl-tmp/lerobot/youliangtan/so101-table-cleanup \
-    --repo-type dataset
+    --type dataset
 ```
 
 之后训练命令中使用 `--dataset.repo_id=Atticuxz/so101-table-cleanup` 即可。
 
 ```bash
 # 下载已上传的数据集到本地
+
 hf download Atticuxz/so101-table-cleanup \
-    --repo-type dataset \
+    --type dataset \
     --local-dir /root/autodl-tmp/lerobot/Atticuxz/so101-table-cleanup
 ```
 
