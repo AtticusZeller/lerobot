@@ -54,8 +54,13 @@ for commit in $NEW_COMMITS; do
     echo "Cherry-picking: $msg"
 
     if git cherry-pick "$commit" --no-commit 2>/dev/null; then
-        git commit -m "$(git log -1 --format='%B' "$commit")" --no-edit
-        echo "  ✓ Picked cleanly"
+        if git diff --cached --quiet 2>/dev/null; then
+            git reset HEAD -- . > /dev/null 2>&1
+            echo "  ⊘ Already applied (empty diff), skipping"
+        else
+            git commit -m "$(git log -1 --format='%B' "$commit")" --no-edit
+            echo "  ✓ Picked cleanly"
+        fi
     else
         echo ""
         echo "╔════════════════════════════════════════════════════════════╗"
