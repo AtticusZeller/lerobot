@@ -50,9 +50,9 @@ python -m lerobot.async_inference.policy_server \
 ```
 
 **说明**:
-- `host=0.0.0.0` 允许其他机器连接（本地测试用 `localhost` 或 `127.0.0.1`）
-- `port=8080` 为默认端口，可根据需要修改
-- Policy Server 启动时是"空容器"，具体策略在首次客户端握手时确定
+* `host=0.0.0.0` 允许其他机器连接（本地测试用 `localhost` 或 `127.0.0.1`）
+* `port=8080` 为默认端口，可根据需要修改
+* Policy Server 启动时是"空容器"，具体策略在首次客户端握手时确定
 
 #### API 方式
 
@@ -80,7 +80,7 @@ python -m lerobot.async_inference.robot_client \
     --robot.cameras="{ top: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}, side: {type: intelrealsense, serial_number_or_name: 233522074606, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
     --policy_type=smolvla \
-    --pretrained_name_or_path=Atticuxz/smolvla_so101_pick_orange \
+    --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
     --policy_device=cuda \
     --actions_per_chunk=50 \
     --chunk_size_threshold=0.5 \
@@ -128,7 +128,7 @@ client_cfg = RobotClientConfig(
     policy_device="cuda",        # 服务端设备（cpu/cuda/mps/xpu）
     client_device="cpu",         # 客户端设备（通常为 cpu）
     policy_type="smolvla",
-    pretrained_name_or_path="Atticuxz/smolvla_so101_pick_orange",
+    pretrained_name_or_path="Atticuxz/smolvla_so101_table_cleanup",
     chunk_size_threshold=0.5,
     actions_per_chunk=50,
 )
@@ -172,29 +172,29 @@ if client.start():
 
 #### `actions_per_chunk`
 
-- **值越大**: 动作队列充足，不易空闲，但预测时间跨度长，累积误差可能增加
-- **值越小**: 动作更精确，但需要更频繁推理，增加带宽和计算压力
-- **建议**: 从默认 50 开始，如果经常空闲则增大，如果动作精度不足则减小
+* **值越大**: 动作队列充足，不易空闲，但预测时间跨度长，累积误差可能增加
+* **值越小**: 动作更精确，但需要更频繁推理，增加带宽和计算压力
+* **建议**: 从默认 50 开始，如果经常空闲则增大，如果动作精度不足则减小
 
 #### `chunk_size_threshold`
 
-- **接近 0.0**: 类似同步推理，只在队列快空时才请求新推理
-- **接近 1.0**: 每步都请求推理，高适应性但高带宽/计算压力
-- **建议**: 0.5-0.6 通常是最佳平衡点
+* **接近 0.0**: 类似同步推理，只在队列快空时才请求新推理
+* **接近 1.0**: 每步都请求推理，高适应性但高带宽/计算压力
+* **建议**: 0.5-0.6 通常是最佳平衡点
 
 #### 调优方法
 
 使用 `--debug_visualize_queue_size=True` 运行客户端，会实时绘制动作队列大小变化图：
 
-- 队列持续接近 0 → 增大 `actions_per_chunk` 或降低控制帧率
-- 队列持续接近上限 → 增大 `chunk_size_threshold`（更频繁更新）
-- 队列在中间稳定震荡 → 参数合适
+* 队列持续接近 0 → 增大 `actions_per_chunk` 或降低控制帧率
+* 队列持续接近上限 → 增大 `chunk_size_threshold`（更频繁更新）
+* 队列在中间稳定震荡 → 参数合适
 
 ### 3.3 其他重要配置
 
 | 配置项 | 说明 | 必须一致 |
 |--------|------|---------|
-| Camera keys | 相机名称（如 `top`, `side`） | 与数据集录制时一致 |
+| Camera keys | 相机名称（如 `top` , `side` ） | 与数据集录制时一致 |
 | Image resolution | 输入图像分辨率 | 与训练时一致 |
 | Prompt | 任务指令文本 | 与训练时使用的一致 |
 | Action space | 动作维度（SO-101 为 7 维） | 与配置一致 |
@@ -205,7 +205,7 @@ if client.start():
 
 ### 4.1 使用本地 Checkpoint
 
-训练后，checkpoint 保存在 `outputs/<experiment_name>/checkpoints/`：
+训练后，checkpoint 保存在 `outputs/<experiment_name>/checkpoints/` ：
 
 ```
 outputs/
@@ -233,7 +233,7 @@ outputs/
 ### 4.2 使用 HF Hub Checkpoint
 
 ```bash
---pretrained_name_or_path=Atticuxz/smolvla_so101_pick_orange
+--pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup
 ```
 
 ### 4.3 快速切换 Checkpoint（评估用）
@@ -261,7 +261,7 @@ python -m lerobot.async_inference.robot_client \
     --robot.cameras="{ top: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
     --policy_type=smolvla \
-    --pretrained_name_or_path=Atticuxz/smolvla_so101_pick_orange \
+    --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
     --dataset.repo_id=Atticuxz/eval_smolvla_pick_orange \
     --dataset.single_task="pick orange" \
     --dataset.streaming_encoding=true \
@@ -269,9 +269,9 @@ python -m lerobot.async_inference.robot_client \
 ```
 
 **说明**:
-- 添加 `--dataset.*` 参数会启用录制功能
-- 录制内容包括：相机画面、关节状态、动作指令、时间戳
-- 录制后的数据集格式与训练数据集一致，可用于后续分析
+* 添加 `--dataset.*` 参数会启用录制功能
+* 录制内容包括：相机画面、关节状态、动作指令、时间戳
+* 录制后的数据集格式与训练数据集一致，可用于后续分析
 
 ---
 
@@ -303,7 +303,7 @@ python -m lerobot.async_inference.robot_client \
 | `LeIsaac-SO101-LiftCube-v0` | 举起红色方块 20cm | 方块高度 > 基座 + 20cm |
 | `LeIsaac-SO101-AssembleHamburger-v0` | 组装汉堡 | 任务特定条件 |
 
-**本次使用**: 训练数据集为 `Atticuxz/leisaac-pick-orange`，对应仿真任务 `LeIsaac-SO101-PickOrange-v0`。
+**本次使用**: 训练数据集为 `Atticuxz/leisaac-pick-orange` ，对应仿真任务 `LeIsaac-SO101-PickOrange-v0` 。
 
 ### 6.3 启动仿真推理
 
@@ -330,7 +330,7 @@ python scripts/evaluation/policy_inference.py \
     --policy_type=lerobot-smolvla \
     --policy_host=<POLICY_SERVER_IP> \
     --policy_port=8080 \
-    --policy_checkpoint_path=Atticuxz/smolvla_so101_pick_orange \
+    --policy_checkpoint_path=Atticuxz/smolvla_so101_table_cleanup \
     --policy_action_horizon=50 \
     --policy_language_instruction="pick up the orange and place it on the plate" \
     --policy_timeout_ms=15000 \
@@ -350,7 +350,7 @@ cd /home/atticuszz/DevSpace/leisaac
     --policy_type lerobot-smolvla \
     --policy_host <POLICY_SERVER_IP> \
     --policy_port 8080 \
-    --policy_checkpoint_path Atticuxz/smolvla_so101_pick_orange \
+    --policy_checkpoint_path Atticuxz/smolvla_so101_table_cleanup \
     --policy_action_horizon 50 \
     --policy_language_instruction "pick up the orange and place it on the plate" \
     --eval_rounds 10
@@ -362,10 +362,10 @@ cd /home/atticuszz/DevSpace/leisaac
 |------|------|
 | `--task` | LeIsaac 注册的仿真任务 ID |
 | `--policy_type=lerobot-smolvla` | `lerobot-` 前缀 + 策略名（pi05/smolvla/act 等） |
-| `--policy_host` | Policy Server 所在 IP（同机用 `localhost`） |
+| `--policy_host` | Policy Server 所在 IP（同机用 `localhost` ） |
 | `--policy_port` | 与 Policy Server 端口一致 |
 | `--policy_checkpoint_path` | HF Hub repo ID 或本地 checkpoint 路径 |
-| `--policy_action_horizon` | 每次推理产生的动作数（对应 `actions_per_chunk`） |
+| `--policy_action_horizon` | 每次推理产生的动作数（对应 `actions_per_chunk` ） |
 | `--policy_language_instruction` | 自然语言任务指令（应与训练时一致） |
 | `--eval_rounds` | 自动评估的 episode 数（0 = 无超时，手动 R 键重置） |
 | `--episode_length_s` | 每个 episode 最大时长（秒） |
@@ -374,8 +374,8 @@ cd /home/atticuszz/DevSpace/leisaac
 
 #### 交互控制
 
-- **R 键**: 手动重置当前 episode（`--eval_rounds=0` 时使用）
-- 仿真窗口实时显示机械臂动作和物体状态
+* **R 键**: 手动重置当前 episode（`--eval_rounds=0` 时使用）
+* 仿真窗口实时显示机械臂动作和物体状态
 
 ### 6.4 仿真推理的数据流
 
@@ -419,13 +419,15 @@ obs["policy"]
 | `front` | `top` | 基座固定视角 |
 | `wrist` | `side` | 腕部/侧面视角 |
 
-**⚠️ 重要**：如果训练数据集的 camera key 是 `top`/`side`，而 LeIsaac 默认用 `front`/`wrist`，会导致策略无法正确匹配图像输入。
+**⚠️ 重要**：如果训练数据集的 camera key 是 `top` / `side` ，而 LeIsaac 默认用 `front` / `wrist` ，会导致策略无法正确匹配图像输入。
 
 **解决方案**（选其一）：
 
 1. **修改 LeIsaac 环境配置**（推荐用于验证已有 checkpoint）：
    在 `SingleArmTaskSceneCfg` 中将相机名称改为与训练数据一致：
-   ```python
+   
+
+```python
    # leisaac/tasks/template/single_arm_env_cfg.py
    # 将 "wrist" 改为 "side"，"front" 改为 "top"
    top: TiledCameraCfg = TiledCameraCfg(...)   # 原 front
@@ -433,7 +435,7 @@ obs["policy"]
    ```
 
 2. **用仿真数据重新训练**（推荐用于仿真专用评估流程）：
-   用 LeIsaac 采集仿真数据集（camera key 为 `front`/`wrist`），重新微调。
+   用 LeIsaac 采集仿真数据集（camera key 为 `front` / `wrist` ），重新微调。
 
 #### 动作空间
 
@@ -462,7 +464,7 @@ gripper:       (-10, 100)   ↔  (0, 100)
 
 ### 6.6 批量自动评估
 
-LeIsaac 的 `policy_inference.py` 内置了自动评估循环（`--eval_rounds`），每个 episode 结束后输出成功率。
+LeIsaac 的 `policy_inference.py` 内置了自动评估循环（ `--eval_rounds` ），每个 episode 结束后输出成功率。
 
 #### 单 checkpoint 评估
 
@@ -482,6 +484,7 @@ python scripts/evaluation/policy_inference.py \
 ```
 
 输出示例：
+
 ```
 [Evaluation] Evaluating episode 1...
 [Evaluation] Episode 1 is successful!
@@ -511,7 +514,7 @@ CHECKPOINTS=(
     "./outputs/smolvla_so101/checkpoints/4000/pretrained_model"
     "./outputs/smolvla_so101/checkpoints/6000/pretrained_model"
     "./outputs/smolvla_so101/checkpoints/last/pretrained_model"
-    "Atticuxz/smolvla_so101_pick_orange"
+    "Atticuxz/smolvla_so101_table_cleanup"
 )
 
 echo "checkpoint,success_rate,success_count,total" > eval_results.csv
@@ -558,7 +561,7 @@ python -m lerobot.async_inference.policy_server --host=0.0.0.0 --port=8080
 bash batch_eval_sim.sh
 ```
 
-> **注意**: 每次切换 checkpoint 时，`policy_inference.py` 会重新通过 `SendPolicyInstructions` 初始化策略，Policy Server 会自动加载新 checkpoint，无需重启。
+> **注意**: 每次切换 checkpoint 时， `policy_inference.py` 会重新通过 `SendPolicyInstructions` 初始化策略，Policy Server 会自动加载新 checkpoint，无需重启。
 
 ### 6.7 仿真 vs 实机评估对比
 
@@ -598,7 +601,7 @@ bash batch_eval_sim.sh
 
 | 症状 | 可能原因 | 解决方案 |
 |------|----------|---------|
-| Action queue 频繁耗尽 | 推理速度跟不上 | 增大 `actions_per_chunk`，降低 fps |
+| Action queue 频繁耗尽 | 推理速度跟不上 | 增大 `actions_per_chunk` ，降低 fps |
 | GPU 利用率低 | 数据加载瓶颈 | 检查相机配置，降低分辨率 |
 | 网络延迟高 | 远程连接问题 | 使用有线网络，确保同一局域网 |
 
@@ -606,14 +609,14 @@ bash batch_eval_sim.sh
 
 ## 8. 参考链接
 
-- LeRobot 异步推理官方文档: https://huggingface.co/docs/lerobot/async
-- LeRobot 异步推理博客: https://huggingface.co/blog/async-robot-inference
-- LeIsaac 项目: https://github.com/LightwheelAI/leisaac
-- LeIsaac 可用环境列表: `python scripts/environments/list_envs.py`
-- 训练配置: `experiments/smolvla_so101_pick_orange.yaml`
-- 训练数据集: `Atticuxz/leisaac-pick-orange`
-- 评估流程文档: [eval.md](./eval.md)
-- 完整训练 Pipeline: [so101_pipeline.md](./so101_pipeline.md)
+* LeRobot 异步推理官方文档: https://huggingface.co/docs/lerobot/async
+* LeRobot 异步推理博客: https://huggingface.co/blog/async-robot-inference
+* LeIsaac 项目: https://github.com/LightwheelAI/leisaac
+* LeIsaac 可用环境列表: `python scripts/environments/list_envs.py`
+* 训练配置: `experiments/smolvla_so101_table_cleanup.yaml`
+* 训练数据集: `Atticuxz/leisaac-pick-orange`
+* 评估流程文档: [eval.md](./eval.md)
+* 完整训练 Pipeline: [so101_pipeline.md](./so101_pipeline.md)
 
 ---
 
