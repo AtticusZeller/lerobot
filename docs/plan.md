@@ -4,6 +4,47 @@
 
 ---
 
+## 2026-04-12 Daily Sync
+
+### Completed Today
+
+- [x] **GPU Dev Container 环境搭建**
+  - 新建独立仓库 [gpu-devcontainer](https://github.com/AtticusZeller/gpu-devcontainer)：可复用 CUDA 12.4 + Ubuntu 22.04 镜像，适配智新云等裸机 GPU 服务器
+  - 新建私有仓库 [dotfiles-private](https://github.com/AtticusZeller/dotfiles-private)：统一管理认证 token 和 shell 配置
+  - `.devcontainer/` 已复制至当前 lerobot 仓库，VS Code 可直接 "Reopen in Container"
+
+- [x] **镜像内容（8 层 Dockerfile）**
+  - CUDA 12.4 devel + Ubuntu 22.04 基础层
+  - Zsh + Oh My Zsh + Powerlevel10k + 插件（autosuggestions / syntax-highlighting / zsh-bat）
+  - Tmux + Oh My Tmux
+  - UV 0.11 + Python 3.12（UV 托管，symlink 至 `/usr/local/bin`）
+  - UV 全局工具：nvitop、wandb、huggingface-hub（`hf` CLI）
+  - Node.js 24（nvm，symlink 至 `/usr/local/bin`）+ Claude Code + cc-switch
+  - GitHub CLI（gh）
+  - JetBrainsMono Nerd Font
+  - 镜像大小：8.49 GB
+
+- [x] **Dotfiles 部署流程**
+  - `sync.sh`：笔记本端一键收集 HF token、gh token（从 keyring 导出）、wandb .netrc、Claude Code 配置、tmux/git 配置到私有仓库
+  - `post-create.sh`：容器首次启动时 clone dotfiles-private → symlink 配置文件 → 迁移认证
+  - `PAT_TOKEN` 通过 `devcontainer.json` 的 `${localEnv:PAT_TOKEN}` 从宿主机 shell 环境注入，宿主机 `.zshrc` 中 `export PAT_TOKEN=$GITHUB_TOKEN`
+
+- [x] **认证验证结果（容器内）**
+  - GitHub CLI：`GH_TOKEN` 环境变量方案（gh keyring 在容器中无 dbus，不可用）✅
+  - HuggingFace：`~/.cache/huggingface/token` ✅（user: Atticuxz）
+  - wandb：`~/.netrc` (api.wandb.ai) ✅（user: atticux）
+  - Claude Code：2.1.101 ✅
+  - GPU：RTX 4060 Laptop 8GB，`--gpus all` 验证通过 ✅
+
+### Next Steps
+
+- [ ] **云端 GPU 服务器首次部署测试**
+  - 在智新云等裸机服务器上 pull 镜像，走完完整 post-create.sh 流程
+  - 验证 `uv sync --extra dev` 安装 lerobot 依赖正常
+  - 验证 `lerobot-train` 可以正常调用 GPU
+
+---
+
 ## 2026-03-29 Daily Sync
 
 ### 需求背景

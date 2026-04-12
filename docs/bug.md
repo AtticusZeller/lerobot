@@ -3,6 +3,91 @@
 
 ---
 
+## Dev Container：nvm/UV 安装的工具在非交互 shell 中找不到
+**日期**: 2026-04-12
+**分类**: Docker / Dev Container
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+- nvm 安装 Node.js 后，实际路径为 `/root/.nvm/versions/node/v24.14.1/bin/node`（含具体版本号），`ENV PATH` 写死 `v24` 导致 `command not found`
+- UV 安装 Python 3.12 后路径为 `/root/.local/share/uv/python/cpython-3.12-linux-x86_64-gnu/bin/python3.12`，同样不在 `PATH` 上
+
+### 2. 解决方案
+在 Dockerfile 安装完成后立即创建 symlink：
+```dockerfile
+# Python
+RUN uv python install 3.12 \
+    && ln -sf $(uv python find 3.12) /usr/local/bin/python3 \
+    && ln -sf $(uv python find 3.12) /usr/local/bin/python
+
+# Node
+RUN . "$NVM_DIR/nvm.sh" && nvm install 24 \
+    && ln -sf "$(which node)" /usr/local/bin/node \
+    && ln -sf "$(which npm)" /usr/local/bin/npm
+```
+`/usr/local/bin` 在所有 shell 模式下均在 `PATH` 上，避免依赖 shell 初始化脚本。
+
+---
+
+## Dev Container：gh CLI 在容器中无法使用 keyring 认证
+**日期**: 2026-04-12
+**分类**: Docker / Dev Container / GitHub CLI
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+容器内运行 `gh auth status` 报错：
+```text
+failed to migrate config: cowardly refusing to continue with multi account migration:
+couldn't find oauth token for "github.com": exec: "dbus-launch": executable file not found in $PATH
+```
+原因：笔记本上 `gh auth` 将 token 存在系统 keyring（dbus），容器内无 dbus 服务。
+
+### 2. 解决方案
+用 `GH_TOKEN` 环境变量绕过 keyring，gh CLI 优先读取该变量：
+- `sync.sh` 中用 `gh auth token` 导出 token，写入 `dotfiles-private/.config/gh/hosts.yml`
+- `post-create.sh` 从 hosts.yml 提取 token 并 `export GH_TOKEN=...` 写入 `~/.zshrc`
+
+```bash
+# sync.sh 关键片段
+GH_TOKEN=$(gh auth token)
+cat > "$REPO_DIR/.config/gh/hosts.yml" <<EOF
+github.com:
+    git_protocol: https
+    users:
+        ${GH_USER}:
+            oauth_token: ${GH_TOKEN}
+    user: ${GH_USER}
+EOF
+```
+
+---
+
+## Dev Container：VS Code postCreateCommand 收不到 PAT_TOKEN
+**日期**: 2026-04-12
+**分类**: Docker / Dev Container / VS Code
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+VS Code 打开容器时 `post-create.sh` 报 `PAT_TOKEN not set`，无法 clone dotfiles。
+
+### 2. 根本原因
+VS Code Dev Containers 的 `postCreateCommand` 在容器内运行，无法自动继承宿主机 shell 环境变量。
+
+### 3. 解决方案
+`devcontainer.json` 用 `${localEnv:VAR}` 语法从宿主机环境读取并注入：
+```json
+"containerEnv": {
+    "PAT_TOKEN": "${localEnv:PAT_TOKEN}"
+}
+```
+宿主机 `~/.zshrc` 加一行：
+```bash
+export PAT_TOKEN=$GITHUB_TOKEN
+```
+**注意**：VS Code 必须从已加载 `.zshrc` 的终端用 `code .` 启动，才能读到该变量；桌面图标启动的 VS Code 不继承 zsh 环境。
+
+---
+
 ## 数据集 total_frames 与实际帧数不一致导致训练 IndexError
 **日期**: 2026-03-23
 **分类**: 数据集元数据
