@@ -10,8 +10,6 @@
     "HTTPS_PROXY": "http://127.0.0.1:7890",
     "PAT_TOKEN": "${localEnv:PAT_TOKEN}"
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/lerobot,type=bind",
-  "workspaceFolder": "/workspace/lerobot",
   "postCreateCommand": "bash .devcontainer/scripts/post-create.sh",
   "remoteUser": "root"
 }
