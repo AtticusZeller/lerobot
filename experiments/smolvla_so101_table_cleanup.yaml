@@ -20,7 +20,8 @@ policy:
   type: smolvla
   pretrained_path: lerobot/smolvla_base # 预训练基座 (~450M)
   device: cuda
-  push_to_hub: false # 必须显式关闭，默认 true 会报错
+  push_to_hub: true
+  repo_id: Atticuxz/smolvla_so101 # 训练结束后自动上传到 HF Hub
   # SmolVLA 默认值（以下为显式列出，实际可省略）:
   train_expert_only: true # 冻结 VLM，仅训练 Action Expert
   freeze_vision_encoder: true # 冻结 SigLIP 视觉编码器
