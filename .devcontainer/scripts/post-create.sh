@@ -37,18 +37,6 @@ if [ -f "$DOTFILES_DIR/.config/gh/hosts.yml" ]; then
     fi
 fi
 
-# ---- Project dependencies (uv sync via UV_EXTRAS env var) ----
-# UV_EXTRAS is set in devcontainer.json containerEnv, e.g. "dev,pi"
-if [ -f pyproject.toml ] && [ -n "${UV_EXTRAS:-}" ]; then
-    echo "Installing project dependencies (UV_EXTRAS=$UV_EXTRAS)..."
-    EXTRA_ARGS=""
-    IFS=',' read -ra EXTRAS <<< "$UV_EXTRAS"
-    for e in "${EXTRAS[@]}"; do
-        EXTRA_ARGS+="--extra $e "
-    done
-    uv sync $EXTRA_ARGS
-fi
-
 # ---- Verify tools installed ----
 echo ""
 echo "=== Tool Verification ==="

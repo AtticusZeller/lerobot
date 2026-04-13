@@ -1,19 +1,14 @@
 {
   "name": "lerobot Dev",
   "build": {
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "context": "../.."
   },
-  "runArgs": [
-    "--gpus",
-    "all",
-    "--network",
-    "host"
-  ],
+  "runArgs": ["--gpus", "all", "--network", "host"],
   "containerEnv": {
     "HTTP_PROXY": "http://127.0.0.1:7890",
     "HTTPS_PROXY": "http://127.0.0.1:7890",
-    "PAT_TOKEN": "${localEnv:PAT_TOKEN}",
-    "UV_EXTRAS": "dev,smolvla,feetech"
+    "PAT_TOKEN": "${localEnv:PAT_TOKEN}"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace/lerobot,type=bind",
   "workspaceFolder": "/workspace/lerobot",
