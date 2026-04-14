@@ -152,7 +152,7 @@ python -m lerobot.async_inference.robot_client \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM1 \
     --robot.id=so101_follower \
-    --robot.cameras="{ top: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}, side: {type: intelrealsense, serial_number_or_name: 233522074606, width: 640, height: 480, fps: 30}}" \
+    --robot.cameras="{ front: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}, wrist: {type: intelrealsense, serial_number_or_name: 233522074606, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
     --policy_type=smolvla \
     --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
@@ -175,13 +175,13 @@ from lerobot.async_inference.helpers import visualize_action_queue_size
 
 # 1. 配置相机（需与训练数据集的 camera key 一致）
 camera_cfg = {
-    "top": OpenCVCameraConfig(
+    "front": OpenCVCameraConfig(
         index_or_path="/dev/video10",
         width=640,
         height=480,
         fps=30
     ),
-    "side": OpenCVCameraConfig(
+    "wrist": OpenCVCameraConfig(
         index_or_path="/dev/video11",
         width=640,
         height=480,
@@ -265,12 +265,118 @@ if client.start():
 * 队列持续接近上限 → 增大 `chunk_size_threshold`（更频繁更新）
 * 队列在中间稳定震荡 → 参数合适
 
-### 3.3 其他重要配置
+### 3.3 相机参数配置
+
+#### 相机参数由两部分组成
+
+**Key（名称）** — 由训练数据集决定，不能修改。
+
+**Value（硬件参数）** — 需要手动确认后填入。
+
+#### Step 1: 查看数据集的相机 key
+
+```bash
+uv run python -c "
+from lerobot.datasets.lerobot_dataset import LeRobotDatasetMetadata
+meta = LeRobotDatasetMetadata('Atticuxz/so101-table-cleanup')
+for k, v in meta.features.items():
+    dtype = v.get('dtype', '')
+    if 'image' in dtype or 'video' in dtype:
+        key = k.removeprefix('observation.images.')
+        shape = v['shape']
+        fps = v['info']['video.fps']
+        print(f'  {key}: {shape[1]}x{shape[0]} @ {fps}fps')
+"
+```
+
+输出示例：
+
+```
+  front: 640x480 @ 30fps
+  wrist: 640x480 @ 30fps
+```
+
+这意味着推理时 `--robot.cameras` 的 key 必须是 `front` 和 `wrist`。
+
+#### Step 2: 用 `lerobot-find-cameras` 确认硬件参数
+
+```bash
+lerobot-find-cameras
+```
+
+输出示例：
+
+```
+--- Detected Cameras ---
+Camera #0:
+  Type: OpenCV
+  Id: /dev/video10
+  ...
+Camera #1:
+  Type: RealSense
+  Id: 233522074606
+  ...
+```
+
+#### Step 3: 手动对应物理相机 → 数据集 key
+
+根据物理位置判断哪个相机对应数据集中的哪个 key：
+
+| 数据集 key | 物理含义 | 确认的硬件参数 |
+|-----------|---------|-------------|
+| `front` | 正面固定视角（俯视桌面） | type=opencv, `/dev/video10` |
+| `wrist` | 腕部安装视角（随机械臂移动） | type=intelrealsense, serial=`233522074606` |
+
+#### Step 4: 填入配置
+
+```yaml
+# --robot.cameras 的 value 需要填写：
+{
+  front: {
+    type: opencv,                    # lerobot-find-cameras 输出的 Type
+    index_or_path: /dev/video10,     # lerobot-find-cameras 输出的 Id
+    width: 640,                      # 必须与数据集一致
+    height: 480,                     # 必须与数据集一致
+    fps: 30                          # 必须与数据集一致
+  },
+  wrist: {
+    type: intelrealsense,
+    serial_number_or_name: 233522074606,  # lerobot-find-cameras 输出的 Id
+    width: 640,
+    height: 480,
+    fps: 30
+  }
+}
+```
+
+#### Value 各字段说明
+
+| 字段 | 怎么确定 | 能否与数据集不同 |
+|------|---------|---------------|
+| `type` | `lerobot-find-cameras` 输出的 Type | N/A（硬件决定） |
+| `index_or_path` | `lerobot-find-cameras` 输出的 Id（OpenCV 相机） | 不同机器可能不同 |
+| `serial_number_or_name` | `lerobot-find-cameras` 输出的 Id（RealSense） | 固定（硬件序列号） |
+| `width` / `height` | 必须与数据集一致 | **不能** |
+| `fps` | 必须与数据集一致 | **不能** |
+
+#### 映射链路
+
+```
+dev.sh CAMERAS key          数据集 info.json              Policy input_features
+─────────────────           ────────────────              ─────────────────────
+front ──────────────────► observation.images.front ──► SmolVLA input (resize to 512x512)
+wrist ──────────────────► observation.images.wrist ──► SmolVLA input (resize to 512x512)
+
+build_dataset_frame() 自动映射:
+  key = "observation.images.front" → values["front"] = camera.read_latest()
+  key = "observation.images.wrist" → values["wrist"] = camera.read_latest()
+```
+
+### 3.4 其他重要配置
 
 | 配置项 | 说明 | 必须一致 |
 |--------|------|---------|
-| Camera keys | 相机名称（如 `top` , `side` ） | 与数据集录制时一致 |
-| Image resolution | 输入图像分辨率 | 与训练时一致 |
+| Image resolution | 输入图像分辨率（推理时自动 resize 到 512x512） | width/height 与数据集一致 |
 | Prompt | 任务指令文本 | 与训练时使用的一致 |
 | Action space | 动作维度（SO-101 为 7 维） | 与配置一致 |
 
@@ -333,7 +439,7 @@ python -m lerobot.async_inference.robot_client \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM1 \
     --robot.id=so101_follower \
-    --robot.cameras="{ top: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}}" \
+    --robot.cameras="{ front: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
     --policy_type=smolvla \
     --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
@@ -378,7 +484,7 @@ python -m lerobot.async_inference.robot_client \
 | `LeIsaac-SO101-LiftCube-v0` | 举起红色方块 20cm | 方块高度 > 基座 + 20cm |
 | `LeIsaac-SO101-AssembleHamburger-v0` | 组装汉堡 | 任务特定条件 |
 
-**本次使用**: 训练数据集为 `Atticuxz/leisaac-pick-orange` ，对应仿真任务 `LeIsaac-SO101-PickOrange-v0` 。
+**本次使用**: 训练数据集为 `Atticuxz/so101-table-cleanup` ，对应任务 "Grab pens and place into box" 。
 
 ### 6.3 启动仿真推理
 
@@ -489,28 +595,14 @@ obs["policy"]
 
 #### Camera Key 映射
 
-| LeIsaac 仿真 | 训练数据集（实机录制） | 说明 |
-|--------------|----------------------|------|
-| `front` | `top` | 基座固定视角 |
-| `wrist` | `side` | 腕部/侧面视角 |
+| LeIsaac 仿真 | 训练数据集 `so101-table-cleanup` | 说明 |
+|--------------|----------------------------------|------|
+| `front` | `front` | 正面固定视角（俯视桌面） |
+| `wrist` | `wrist` | 腕部安装视角（随机械臂移动） |
 
-**⚠️ 重要**：如果训练数据集的 camera key 是 `top` / `side` ，而 LeIsaac 默认用 `front` / `wrist` ，会导致策略无法正确匹配图像输入。
+当前训练数据集 `Atticuxz/so101-table-cleanup` 已使用 `front` / `wrist` 命名，与 LeIsaac 默认一致，无需额外映射。
 
-**解决方案**（选其一）：
-
-1. **修改 LeIsaac 环境配置**（推荐用于验证已有 checkpoint）：
-   在 `SingleArmTaskSceneCfg` 中将相机名称改为与训练数据一致：
-   
-
-```python
-   # leisaac/tasks/template/single_arm_env_cfg.py
-   # 将 "wrist" 改为 "side"，"front" 改为 "top"
-   top: TiledCameraCfg = TiledCameraCfg(...)   # 原 front
-   side: TiledCameraCfg = TiledCameraCfg(...)   # 原 wrist
-   ```
-
-2. **用仿真数据重新训练**（推荐用于仿真专用评估流程）：
-   用 LeIsaac 采集仿真数据集（camera key 为 `front` / `wrist` ），重新微调。
+**⚠️ 注意**：如果使用旧数据集（camera key 为 `top` / `side` ），需要在 LeIsaac 或推理配置中做映射。参见 3.3 节相机参数配置流程。
 
 #### 动作空间
 
@@ -689,7 +781,7 @@ bash batch_eval_sim.sh
 * LeIsaac 项目: https://github.com/LightwheelAI/leisaac
 * LeIsaac 可用环境列表: `python scripts/environments/list_envs.py`
 * 训练配置: `experiments/smolvla_so101_table_cleanup.yaml`
-* 训练数据集: `Atticuxz/leisaac-pick-orange`
+* 训练数据集: `Atticuxz/so101-table-cleanup`
 * 评估流程文档: [eval.md](./eval.md)
 * 完整训练 Pipeline: [so101_pipeline.md](./so101_pipeline.md)
 
