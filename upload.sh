@@ -42,17 +42,36 @@ if [[ ${#STEPS[@]} -eq 0 ]]; then
     done < <(ls -d "$CKPT_BASE"/*/ | sort | tail -5)
 fi
 
+# Python helper: chunked upload via huggingface_hub (lower memory than hf CLI)
+hf_upload() {
+    local repo_id="$1" folder="$2" revision="$3" msg="$4"
+    python3 -c "
+from huggingface_hub import HfApi
+api = HfApi()
+try:
+    api.create_branch('${repo_id}', repo_type='model', branch='${revision}')
+except Exception:
+    pass  # branch already exists
+api.upload_folder(
+    repo_id='${repo_id}',
+    folder_path='${folder}',
+    revision='${revision}',
+    commit_message='${msg}',
+    repo_type='model',
+    create_pr=False,
+)
+"
+}
+
 # Upload each step as a separate branch
 for step in "${STEPS[@]}"; do
-    dir="$CKPT_BASE/$step/"
+    dir="$CKPT_BASE/$step/pretrained_model"
     if [[ ! -d "$dir" ]]; then
         echo "WARNING: $dir does not exist, skipping."
         continue
     fi
     echo "==> Uploading step-$step ..."
-    hf upload "$REPO_ID" "${dir}pretrained_model" . \
-        --revision "step-$step" \
-        --commit-message "Upload checkpoint step-$step"
+    hf_upload "$REPO_ID" "$dir" "step-$step" "Upload checkpoint step-$step"
 done
 
 # Determine which step to promote to main
@@ -60,16 +79,14 @@ if [[ -z "$MAIN_STEP" ]]; then
     MAIN_STEP="${STEPS[-1]}"
 fi
 
-MAIN_DIR="$CKPT_BASE/$MAIN_STEP/"
+MAIN_DIR="$CKPT_BASE/$MAIN_STEP/pretrained_model"
 if [[ ! -d "$MAIN_DIR" ]]; then
     echo "ERROR: main step dir $MAIN_DIR does not exist."
     exit 1
 fi
 
 echo "==> Promoting step-$MAIN_STEP to main ..."
-hf upload "$REPO_ID" "${MAIN_DIR}pretrained_model" . \
-    --revision main \
-    --commit-message "Promote step-$MAIN_STEP to main"
+hf_upload "$REPO_ID" "$MAIN_DIR" "main" "Promote step-$MAIN_STEP to main"
 
 echo ""
 echo "Done. step-$MAIN_STEP is now on main."
