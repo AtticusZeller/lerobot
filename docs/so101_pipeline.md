@@ -185,7 +185,7 @@ rename_map:
 | 模型 | 归一化模式 | 是否需要额外数据处理 |
 |------|-----------|-------------------|
 | **SmolVLA** | MEAN_STD | **不需要**，数据集默认包含 mean/std |
-| **Pi0.5** | QUANTILES | **需要**运行 `augment_dataset_quantile_stats.py`，详见 [so101_pi05.md](./so101_pi05.md#3-quantile-统计量处理) |
+| **Pi0.5** | MEAN_STD（推荐覆盖） | **不需要**，YAML 已配置覆盖为 MEAN_STD，详见 [so101_pi05.md](./so101_pi05.md#3-归一化模式选择) |
 
 ### 训练命令
 
@@ -285,7 +285,7 @@ python -m lerobot.async_inference.robot_client \
 ┌─────────────────────────────────────────────────────────┐
 │ Step 2: 模型特定数据准备                                  │
 │ - SmolVLA: 无需额外处理                                   │
-│ - Pi0.5:  运行 augment_dataset_quantile_stats.py          │
+│ - Pi0.5:  推荐 MEAN_STD，无需额外处理                     │
 │ 详见对应模型子文档                                        │
 └─────────────────────────────────────────────────────────┘
                             ↓
