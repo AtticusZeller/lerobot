@@ -207,3 +207,36 @@ hf auth whoami
 所有 `--dataset.repo_id`、`--policy.repo_id`、`hf download` 参数中的用户名严格按 `whoami` 输出填写。
 
 **为何有效**: HF Hub URL 路径大小写敏感，用户名必须与注册时完全一致。
+
+---
+
+## Pi0.5 expert-only 训练 batch_size=4 无法收敛
+**日期**: 2026-04-14
+**分类**: 训练超参 / Pi0.5
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+- **触发条件**: 使用 `pi05_expert_so101_table_cleanup.yaml` 训练 Pi0.5 expert-only，`batch_size=4`，数据集 ~47k 帧 / 80 episodes
+- **具体表现**: loss 不下降，训练无法收敛
+
+### 2. 根本原因
+Pi0.5 Action Expert 使用 Flow Matching（连续扩散）生成动作序列，每步训练从随机时间步采样并预测去噪方向。`batch_size=4` 时：
+- 每个 batch 内时间步采样覆盖稀疏，梯度估计的**方差极大**
+- 有效信噪比过低，参数更新方向近似随机游走，无法稳定收敛
+
+这与图像扩散模型类似——小 batch 下扩散/flow 目标的梯度噪声远大于普通监督学习。
+
+### 3. 解决方案
+将 `batch_size` 从 4 提升到 16（32GB 显存，expert-only + bf16 足够）：
+
+```yaml
+batch_size: 16    # 32GB 显存，expert-only + bf16
+steps: 4000       # 47513 / 16 ≈ 2970 steps/epoch ≈ 1.3 epochs → 留足步数
+save_freq: 1000
+```
+
+同时开启 `gradient_checkpointing: true` 以确保显存够用。
+
+**为何有效**: 更大的 batch 使每步梯度中时间步采样更均匀，降低方差，Flow Matching 目标的梯度估计更准确，训练得以收敛。
+
+> **经验法则**: Flow Matching / Diffusion 类策略的 batch_size 建议 ≥ 16，小于 8 几乎不可能收敛。
