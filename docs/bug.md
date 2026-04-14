@@ -240,3 +240,52 @@ save_freq: 1000
 **为何有效**: 更大的 batch 使每步梯度中时间步采样更均匀，降低方差，Flow Matching 目标的梯度估计更准确，训练得以收敛。
 
 > **经验法则**: Flow Matching / Diffusion 类策略的 batch_size 建议 ≥ 16，小于 8 几乎不可能收敛。
+
+---
+
+## LeRobot Dataset 默认拉取 tag 而非 main 分支，导致元数据不一致
+**日期**: 2026-04-14
+**分类**: HuggingFace Hub / 数据集下载
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+- **触发条件**: 在 Hub 上修改了数据集 `Atticuxz/so101-table-cleanup` 的 `info.json`（修正 `total_frames` 从 47513 → 46963），push 到 main 分支后，训练机下载的数据集 `info.json` 仍是旧值 47513。
+- **具体表现**: 训练第 1 步 DataLoader worker 抛出 `IndexError: Invalid key: 47207 is out of bounds for size 46963`。
+
+### 2. 关键日志
+```text
+IndexError: Invalid key: 47207 is out of bounds for size 46963
+```
+
+### 3. 排查过程
+对比 Hub 上不同 revision 的 `info.json`：
+
+| Revision | `total_frames` |
+|----------|---------------|
+| `main` 分支 | 46963 ✅ (已修正) |
+| `v3.0` tag | 47513 ❌ (旧值) |
+
+LeRobot 的数据集加载链：`LeRobotDataset` → `LeRobotDatasetMetadata` → 根据 `codebase_version`（如 `v3.0`）查找对应 tag → 按 tag revision 下载文件。代码不会拉 `main` 分支，而是拉 `info.json` 中 `codebase_version` 对应的 tag。
+
+### 4. 根本原因
+Hub 上的 `v3.0` tag 指向旧 commit（修改 `info.json` 之前），LeRobot 按 tag 拉取，所以拿到的还是旧的 `info.json`。
+
+### 5. 解决方案
+将 `v3.0` tag 移到 main 的最新 commit：
+```python
+from huggingface_hub import HfApi
+
+api = HfApi()
+repo = "Atticuxz/so101-table-cleanup"
+main_commit = "9eae4c5b07ca8553c2fcb8c953daff745a71ddc0"
+
+api.delete_tag(repo_id=repo, tag="v3.0", repo_type="dataset")
+api.create_tag(repo_id=repo, tag="v3.0", revision=main_commit, repo_type="dataset")
+```
+
+然后在训练机上清除缓存重新下载：
+```bash
+rm -rf ~/.cache/huggingface/hub/datasets--Atticuxz--so101-table-cleanup
+```
+
+> **经验法则**: 修改 Hub 上数据集的元数据后，必须同步更新对应 `codebase_version` 的 tag（如 `v3.0`），否则 LeRobot 仍会拉到旧版本。main 分支的改动不会自动反映到已有 tag。
