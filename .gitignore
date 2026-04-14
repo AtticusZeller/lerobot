@@ -90,7 +90,7 @@ celerybeat.pid
 ### IDE & Editor Config ###
 # VS Code
 .vscode/
-devcontainer/
+#devcontainer/
 
 # JetBrains / PyCharm
 .idea/
@@ -176,3 +176,5 @@ outputs/
 *.urdf
 *.xml
 *.part
+/output
+/models
