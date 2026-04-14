@@ -90,7 +90,7 @@ uv sync --extra "smolvla" --extra "dev" --extra "feetech"
 
 ```bash
 RUN_DIR="/root/autodl-tmp/outputs/smolvla_so101/$(date +%Y%m%d_%H%M%S)"
-
+# RUN_DIR="./outputs/smolvla_so101/$(date +%Y%m%d_%H%M%S)"
 lerobot-train \
     --policy.path=lerobot/smolvla_base \
     --dataset.repo_id=Atticuxz/so101-table-cleanup \
