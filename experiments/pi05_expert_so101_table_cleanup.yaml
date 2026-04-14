@@ -17,17 +17,22 @@ policy:
   type: pi05
   pretrained_path: lerobot/pi05_base
   dtype: bfloat16
-  gradient_checkpointing: false      # 显存减半，速度降 ~20%
+  gradient_checkpointing: true       # 显存不够，开启省显存
   train_expert_only: true          # 冻结整个 PaliGemma VLM，仅训练 Action Expert
   freeze_vision_encoder: true      # 显式冻结视觉塔
-  compile_model: true              # torch.compile 加速，首次编译慢 5-10 min
+  compile_model: false             # 关闭 torch.compile，排查梯度流问题
   device: cuda
-  push_to_hub: false               # 必须显式关闭，默认 true 会报错
+  push_to_hub: true
+  repo_id: Atticuxz/pi05_expert_so101  # 训练结束后自动上传到 HF Hub
+  normalization_mapping:
+    VISUAL: IDENTITY
+    STATE: MEAN_STD                  # 覆盖默认 QUANTILES，无需 augment_dataset_quantile_stats
+    ACTION: MEAN_STD                 # Z-score: (a - μ) / σ
 
 # --- Training ---
-batch_size: 4                      # 单卡 24GB 保守值，可根据显存调整
-steps: 8000                        # ~80 episodes, batch_size=4, ≈4 epochs
-save_freq: 2000                    # 每 2000 步保存 checkpoint
+batch_size: 16                     # 32GB 显存，expert-only + bf16
+steps: 4000                        # 47513 frames / 32 ≈ 1485 steps/epoch ≈ 5 epochs
+save_freq: 1000                    # 每 2000 步保存 checkpoint
 log_freq: 50
 eval_freq: 0                      # SO-ARM101 无仿真环境，关闭评估
 seed: 1000
