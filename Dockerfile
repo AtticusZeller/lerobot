@@ -1,6 +1,7 @@
 # =============================================================================
 # LeRobot Inference Container — standalone, no .devcontainer needed
 # Multi-stage: builder (devel) → runtime (small)
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -20,9 +21,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
-# ── uv (official distroless copy) ──
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# ── uv (official distroless copy, pinned version) ──
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/#installing-uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.6 /uv /uvx /bin/
+
+# ── uv environment ──
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/#using-the-environment
 ENV UV_LINK_MODE=copy
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/#compiling-bytecode
+ENV UV_COMPILE_BYTECODE=1
 
 # ── Python 3.12 ──
 RUN uv python install 3.12
@@ -30,13 +37,14 @@ RUN uv python install 3.12
 WORKDIR /workspace/lerobot
 
 # ── Install dependencies (cached unless deps change) ──
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra smolvla --extra feetech --extra async \
     --no-install-project --locked --no-editable
 
 # ── Copy source + install project ──
-COPY src/ src/
+COPY README.md src/ src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --extra smolvla --extra feetech --extra async \
     --locked --no-editable
@@ -58,13 +66,15 @@ ENV LC_ALL=en_US.UTF-8
 
 WORKDIR /workspace/lerobot
 
-# ── Copy built venv (includes lerobot) ──
+# ── Copy uv-managed Python + built venv (includes lerobot) ──
+COPY --from=builder /root/.local/share/uv /root/.local/share/uv
 COPY --from=builder /workspace/lerobot/.venv .venv
 
 # ── Entrypoint ──
 COPY dev.sh dev.sh
 RUN chmod +x dev.sh
 
+# Ref: https://docs.astral.sh/uv/guides/integration/docker/#using-the-environment
 ENV PATH="/workspace/lerobot/.venv/bin:$PATH"
 
 # HF auth: pass at runtime via -e HF_TOKEN=hf_xxx
