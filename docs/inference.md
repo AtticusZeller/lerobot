@@ -114,7 +114,59 @@ Client                               Server
 
 ## 2. 推理服务部署
 
-### 2.1 启动 Policy Server（GPU 服务器端）
+### 2.1 Docker 容器部署（推荐）
+
+项目根目录 `Dockerfile` 提供了自包含的多阶段推理镜像，无需 `.devcontainer`。
+
+#### 构建镜像
+
+```bash
+docker build -t lerobot-infer .
+```
+
+#### 推送到 Docker Hub
+
+```bash
+docker tag lerobot-infer atticux/lerobot-infer:latest
+docker push atticux/lerobot-infer:latest
+```
+
+#### 运行容器（默认使用云端镜像）
+
+```bash
+# 首次运行（需要 HF token 下载模型）
+docker run --gpus all --network host \
+  -e HF_TOKEN=hf_xxxxxxxxxxxx \
+  -v hf-cache:/root/.cache/huggingface \
+  atticux/lerobot-infer:latest
+
+# 后续运行（模型已缓存在 volume 中）
+docker run --gpus all --network host \
+  -v hf-cache:/root/.cache/huggingface \
+  atticux/lerobot-infer:latest
+```
+
+**说明**:
+* `--gpus all` — 挂载 GPU（必须，VLA 推理需要 CUDA）
+* `--network host` — 使用宿主网络，gRPC 服务直接在宿主端口 8080 可达
+* `-e HF_TOKEN` — HuggingFace 认证 token，`huggingface_hub` 自动读取此环境变量，无需 `hf auth login`
+* `-v hf-cache:/root/.cache/huggingface` — 模型缓存持久化，避免每次重新下载
+
+#### 容器架构
+
+```
+Stage 1 (builder)                    Stage 2 (runtime)
+nvidia/cuda:12.4.0-devel             nvidia/cuda:12.4.0-runtime
+┌────────────────────────┐           ┌────────────────────────┐
+│ 系统依赖 + uv + Python │           │ 最小运行时依赖         │
+│ uv sync --no-editable  │ ──copy──► │ .venv (含 lerobot)     │
+│ .venv 产出             │           │ dev.sh 入口            │
+└────────────────────────┘           └────────────────────────┘
+                                     EXPOSE 8080
+                                     CMD: dev.sh serve 0.0.0.0:8080
+```
+
+### 2.2 命令行方式启动 Policy Server
 
 #### 命令行方式
 
