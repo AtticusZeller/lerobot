@@ -4,6 +4,8 @@ set -e
 # Defaults
 DEFAULT_CKPT_BASE="/root/autodl-tmp/outputs/smolvla_so101/20260413_152921/checkpoints"
 REPO_ID="Atticuxz/smolvla_so101"
+DATASET="Atticuxz/so101-table-cleanup"
+POLICY="smolvla"
 
 usage() {
     echo "Usage: $0 [OPTIONS] [STEP...]"
@@ -17,6 +19,8 @@ usage() {
     echo "  -d, --dir DIR        Checkpoint base directory (default: $DEFAULT_CKPT_BASE)"
     echo "  -m, --main STEP      Step to promote to main branch (default: last uploaded step)"
     echo "  -r, --repo REPO_ID   HuggingFace repo ID (default: $REPO_ID)"
+    echo "  -t, --dataset REPO   Dataset repo id (default: $DATASET)"
+    echo "  -p, --policy TYPE    Policy type tag (default: $POLICY)"
     echo "  -h, --help           Show this help"
     exit 0
 }
@@ -27,11 +31,13 @@ STEPS=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -d|--dir)   CKPT_BASE="$2"; shift 2 ;;
-        -m|--main)  MAIN_STEP="$2"; shift 2 ;;
-        -r|--repo)  REPO_ID="$2"; shift 2 ;;
-        -h|--help)  usage ;;
-        *)          STEPS+=("$1"); shift ;;
+        -d|--dir)      CKPT_BASE="$2"; shift 2 ;;
+        -m|--main)     MAIN_STEP="$2"; shift 2 ;;
+        -r|--repo)     REPO_ID="$2"; shift 2 ;;
+        -t|--dataset)  DATASET="$2"; shift 2 ;;
+        -p|--policy)   POLICY="$2"; shift 2 ;;
+        -h|--help)     usage ;;
+        *)             STEPS+=("$1"); shift ;;
     esac
 done
 
@@ -88,5 +94,26 @@ fi
 echo "==> Promoting step-$MAIN_STEP to main ..."
 hf_upload "$REPO_ID" "$MAIN_DIR" "main" "Promote step-$MAIN_STEP to main"
 
+# Update Hub metadata (datasets, tags, pipeline_tag, library_name)
+echo "==> Updating Hub metadata ..."
+python3 -c "
+from huggingface_hub import HfApi
+api = HfApi()
+api.update_repo_metadata(
+    repo_id='${REPO_ID}',
+    repo_type='model',
+    pipeline_tag='robotics',
+    tags=['robotics', 'lerobot', '${POLICY}'],
+)
+from huggingface_hub import metadata_update
+metadata_update(
+    '${REPO_ID}',
+    {'datasets': ['${DATASET}'], 'library_name': 'lerobot'},
+    repo_type='model',
+    overwrite=True,
+)
+"
+
 echo ""
 echo "Done. step-$MAIN_STEP is now on main."
+echo "Hub: https://huggingface.co/$REPO_ID"

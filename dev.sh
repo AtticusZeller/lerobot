@@ -55,6 +55,8 @@ Train options:
   --steps N           Override training steps
   --batch-size N      Override batch size
   --output-dir PATH   Override output dir (default: ./outputs/<model>_so101_<timestamp>)
+  --repo-id REPO      Override HF Hub repo_id (default: <preset>_<timestamp>)
+  --no-push           Skip pushing to HF Hub
   Any other args forwarded to lerobot-train
 
 Examples:
@@ -194,23 +196,42 @@ cmd_train() {
     local config="${CONFIG_FILE[$model]:?Unknown model: $model}"
     local extra=()
     local output_dir=""
+    local repo_id=""
+    local push=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --steps)       extra+=("--steps" "$2"); shift 2 ;;
             --batch-size)  extra+=("--batch_size" "$2"); shift 2 ;;
             --output-dir)  output_dir="$2"; shift 2 ;;
+            --repo-id)     repo_id="$2"; shift 2 ;;
+            --no-push)     push="false"; shift ;;
             *)             extra+=("$1"); shift ;;
         esac
     done
 
     # Auto-generate timestamped output dir if not explicitly set
+    local ts; ts=$(date +%Y%m%d_%H%M)
     if [[ -z "$output_dir" ]]; then
-        output_dir="./outputs/${model}_so101_$(date +%Y%m%d_%H%M)"
+        output_dir="./outputs/${model}_so101_${ts}"
+    fi
+
+    # Auto-generate timestamped repo_id for Hub, unless overridden
+    if [[ -z "$repo_id" ]]; then
+        repo_id="${HF_REPO[$model]}_${ts}"
+    fi
+
+    # Build push args
+    local hub_args=()
+    if [[ "$push" == "false" ]]; then
+        hub_args+=("--policy.push_to_hub=false")
+    else
+        hub_args+=("--policy.push_to_hub=true" "--policy.repo_id=$repo_id")
     fi
 
     echo "Training: $config → $output_dir"
-    lerobot-train --yaml_config="$config" --output_dir="$output_dir" "${extra[@]}"
+    [[ "$push" != "false" ]] && echo "Hub: $repo_id"
+    lerobot-train --yaml_config="$config" --output_dir="$output_dir" "${hub_args[@]}" "${extra[@]}"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
