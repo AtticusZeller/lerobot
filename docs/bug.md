@@ -289,3 +289,66 @@ rm -rf ~/.cache/huggingface/hub/datasets--Atticuxz--so101-table-cleanup
 ```
 
 > **经验法则**: 修改 Hub 上数据集的元数据后，必须同步更新对应 `codebase_version` 的 tag（如 `v3.0`），否则 LeRobot 仍会拉到旧版本。main 分支的改动不会自动反映到已有 tag。
+
+---
+
+## 相机访问：用户组权限与 RealSense 依赖缺失
+**日期**: 2026-04-15
+**分类**: 硬件 / Linux 权限 / 相机
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+运行 `lerobot-find-cameras` 时出现两类错误：
+
+**(a) RealSense D435i 无法打开 / 检测失败**
+```text
+ERROR: Failed to connect or configure RealSense camera 244622071377:
+Failed to open RealSenseCamera(244622071377).
+NameError: name 'rs' is not defined
+```
+
+**(b) 部分 USB 相机读帧超时**
+```text
+Failed to connect or configure OpenCV camera /dev/video4:
+Timed out waiting for frame from camera OpenCVCamera(/dev/video4) after 1000 ms.
+```
+
+### 2. 根本原因
+
+| 现象 | 根本原因 |
+|------|----------|
+| RealSense `rs` 未定义 | `pyrealsense2` 库未安装（相机检测脚本 `try: import pyrealsense2 as rs`，失败时置 `rs=None`） |
+| 相机设备归属 `plugdev` 组 | USB 相机 udev 规则将 `/dev/videoN` 分配给 `plugdev` 组，用户未在该组中 |
+| `/dev/video4` 读帧超时 | 同一物理相机（icSpring）向内核注册多个 video node，只有其中一个是可读的真实视频流 |
+
+设备组归属确认：
+```bash
+$ ls -l /dev/video*
+crw-rw-rw-+ 1 root video   81, 0 /dev/video0   # RealSense/OpenCV
+crw-rw-rw-+ 1 root plugdev 81, 4 /dev/video4   # icSpring (不可读 node)
+crw-rw-rw-+ 1 root plugdev 81, 6 /dev/video6   # icSpring (可读 node)
+
+$ groups
+atticux dialout sudo video docker   # ← 缺 plugdev
+```
+
+### 3. 解决方案
+
+**(a) 安装 `pyrealsense2`（uv 项目必须用 `uv add`，不能 `pip install`）：**
+```bash
+uv add pyrealsense2 --optional realsense
+```
+
+**(b) 将用户加入 `plugdev` 和 `video` 组（重新登录生效）：**
+```bash
+sudo usermod -aG plugdev,video $USER
+# 退出并重新登录（或重启），使组变更生效
+groups   # 确认包含 plugdev video
+```
+
+**(c) 多 video node 的识别：** 对同一物理相机注册多个 `/dev/videoN`（常见于 UVC 相机），用 `lerobot-find-cameras` 实际读帧验证，超时的那个 node 跳过使用。本项目中 icSpring 相机 `/dev/video4` 超时、`/dev/video6` 可读，故 `dev.sh` 的 `CAMERAS` 配置锁定为 `/dev/video6`（top）与 `/dev/video0`（wrist）。
+
+### 4. 经验
+- **优先用 `lerobot-find-cameras` 实机验证**，不要只靠 `ls /dev/video*` 判断，同一相机的多 node 只有一个能读帧。
+- **RealSense 额外依赖**：必须装 `pyrealsense2`，并确保 `librealsense` udev 规则已安装（通常随包提供），否则需要 root 才能访问设备。
+- **权限变更后必须重新登录**，`usermod -aG` 的新组只对新会话生效。
