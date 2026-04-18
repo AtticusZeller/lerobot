@@ -295,6 +295,8 @@ if client.start():
 | `client_device` | 客户端设备 | - | `cpu` | 处理观测、动作插值 |
 | `aggregate_fn_name` | 重叠动作聚合函数 | - | `weighted_average` | weighted_average / max / min |
 
+> **如何确定 `actions_per_chunk`**：在 visualize_dataset 的 **Action Insights → Action Autocorrelation** 面板（详见 [`data_analysis_guide.md §2.3`](./data_analysis_guide.md)），切换到 **All Episodes** 模式，读取 **Suggested chunk length** 值，将其直接用作 `actions_per_chunk`。
+
 ### 3.2 参数调优建议
 
 #### `actions_per_chunk`

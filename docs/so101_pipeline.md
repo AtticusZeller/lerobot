@@ -187,6 +187,18 @@ rename_map:
 | **SmolVLA** | MEAN_STD | **不需要**，数据集默认包含 mean/std |
 | **Pi0.5** | MEAN_STD（推荐覆盖） | **不需要**，YAML 已配置覆盖为 MEAN_STD，详见 [so101_pi05.md](./so101_pi05.md#3-归一化模式选择) |
 
+### 训练前：诊断控制延迟（State–Action Temporal Alignment）
+
+在 visualize_dataset 的 **Action Insights → State–Action Temporal Alignment** 面板（详见 [`data_analysis_guide.md §2.4`](./data_analysis_guide.md)），查看数据集的 **Mean control delay**：
+
+| Mean control delay | 处理 |
+|---|---|
+| 0–2 步 | 无需处理，直接训练 ✅ |
+| 3–5 步 | 考虑在训练配置中将 action label 前移 L 步（`delta_timestamps` 偏移） |
+| > 5 步 | **必须**调整，否则 closed-loop 推理会震荡 |
+
+延迟较大时的对齐方法见 `data_analysis_guide.md §2.4`（录制机制与内置延迟的来源）。
+
 ### 训练命令
 
 > 具体训练参数、YAML 配置、steps 建议请参考对应模型子文档。
