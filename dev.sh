@@ -151,9 +151,17 @@ cmd_check() {
     echo "=== 硬件连通性检查 ==="
     echo ""
 
-    # ── Robot port ──
-    echo -n "机械臂 ($ROBOT_PORT): "
+    # ── Robot ports ──
+    echo -n "Follower 臂 ($ROBOT_PORT): "
     if [[ -e "$ROBOT_PORT" ]]; then
+        echo "OK"
+    else
+        echo "未检测到"
+        ok=false
+    fi
+
+    echo -n "Leader 臂  ($LEADER_PORT): "
+    if [[ -e "$LEADER_PORT" ]]; then
         echo "OK"
     else
         echo "未检测到"
