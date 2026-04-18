@@ -21,9 +21,16 @@ PORT="8080"
 ROBOT_TYPE="so101_follower"
 ROBOT_PORT="/dev/ttyACM0"
 ROBOT_ID="so101_follower"
+LEADER_TYPE="so101_leader"
+LEADER_PORT="/dev/ttyACM1"
+LEADER_ID="so101_leader"
 CAMERAS='{ front: {type: opencv, index_or_path: /dev/video6, width: 640, height: 480, fps: 30}, wrist: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30}}'
 ACTIONS_PER_CHUNK=50
 CHUNK_THRESHOLD=0.5
+DISPLAY_IP="127.0.0.1"
+DISPLAY_PORT="9876"
+HF_USER="Atticuxz"
+DATASET_REPO_ID="${HF_USER}/so101-table-cleanup"
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
 usage() {
@@ -32,6 +39,9 @@ Usage: dev.sh <command> [model] [options]
 
 Commands:
   check                        Check hardware connectivity (cameras + robot arm)
+  rerun                        Start Rerun web viewer for live camera preview
+  teleop [options]             Teleoperate (pre-check, no recording)
+  record [options]             Record teleoperation episodes to dataset
   serve [options]              Start async policy server (gRPC, model-agnostic)
   infer [model] [options]      Load model and start robot client (connects to server)
   sync [model] [options]       Single-process inference (no server needed)
@@ -47,6 +57,29 @@ Workflow:
     Terminal 2:  dev.sh infer [model]      — load model, connect robot to server
   Sync (single terminal):
     dev.sh sync [model]                   — single-process inference, no server needed
+
+Rerun options:
+  (none — always binds gRPC:$DISPLAY_PORT + Web:9090)
+
+Teleop options:
+  --robot-port PORT   Robot serial port (default: $ROBOT_PORT)
+  --leader-port PORT  Leader arm serial port (default: $LEADER_PORT)
+  --cameras JSON      Camera config JSON (default: front=/dev/video6, wrist=/dev/video0)
+  --display-ip IP     Rerun server IP (default: $DISPLAY_IP)
+  --display-port PORT Rerun gRPC port (default: $DISPLAY_PORT)
+
+Record options:
+  --robot-port PORT    Robot serial port (default: $ROBOT_PORT)
+  --leader-port PORT   Leader arm serial port (default: $LEADER_PORT)
+  --cameras JSON       Camera config JSON (default: front=/dev/video6, wrist=/dev/video0)
+  --repo-id REPO       Dataset HF repo ID (default: $DATASET_REPO_ID)
+  --episodes N         Number of episodes (default: 50)
+  --episode-time N     Episode duration in seconds (default: 30)
+  --reset-time N       Reset duration in seconds (default: 10)
+  --display-ip IP      Rerun server IP (default: $DISPLAY_IP)
+  --display-port PORT  Rerun gRPC port (default: $DISPLAY_PORT)
+  --push               Push dataset to HF Hub after recording
+  --resume             Resume an existing dataset (append episodes)
 
 Serve options:
   --host HOST         Server bind address (default: $HOST)
@@ -85,6 +118,12 @@ Task: "$TASK"
 
 Examples:
   dev.sh check
+  dev.sh rerun                              # Terminal A: start Rerun viewer (browse http://localhost:9090)
+  dev.sh teleop                             # Terminal B: pre-check teleop (no recording)
+  dev.sh teleop --display-ip 192.168.1.x   # connect to remote Rerun viewer
+  dev.sh record                             # record 50 episodes to $DATASET_REPO_ID
+  dev.sh record --episodes 10 --push        # record 10 episodes, push to Hub
+  dev.sh record --resume --episodes 20      # append 20 more episodes
   dev.sh serve                              # start gRPC server (default: 0.0.0.0:8080)
   dev.sh serve --host 0.0.0.0 --port 8080
   dev.sh serve --fps 15                     # lower FPS for slower hardware
@@ -155,6 +194,104 @@ for k, v in meta.features.items():
         echo "✗ 部分检查失败，请查看上方详情"
         return 1
     fi
+}
+
+# ── rerun ─────────────────────────────────────────────────────────────────────
+cmd_rerun() {
+    echo "Starting Rerun web viewer (gRPC:${DISPLAY_PORT} + Web:9090) ..."
+    echo "Browse: http://localhost:9090"
+    rerun --web-viewer
+}
+
+# ── teleop ────────────────────────────────────────────────────────────────────
+cmd_teleop() {
+    local rport="$ROBOT_PORT"
+    local lport="$LEADER_PORT"
+    local cams="$CAMERAS"
+    local display_ip="$DISPLAY_IP"
+    local display_port="$DISPLAY_PORT"
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --robot-port)   rport="$2"; shift 2 ;;
+            --leader-port)  lport="$2"; shift 2 ;;
+            --cameras)      cams="$2"; shift 2 ;;
+            --display-ip)   display_ip="$2"; shift 2 ;;
+            --display-port) display_port="$2"; shift 2 ;;
+            *) echo "Unknown option: $1"; usage ;;
+        esac
+    done
+
+    echo "Teleop pre-check: follower=$rport  leader=$lport  rerun=${display_ip}:${display_port}"
+    lerobot-teleoperate \
+        --robot.type="$ROBOT_TYPE" \
+        --robot.port="$rport" \
+        --robot.id="$ROBOT_ID" \
+        --robot.cameras="$cams" \
+        --teleop.type="$LEADER_TYPE" \
+        --teleop.port="$lport" \
+        --teleop.id="$LEADER_ID" \
+        --display_data=true \
+        --display_ip="$display_ip" \
+        --display_port="$display_port"
+}
+
+# ── record ────────────────────────────────────────────────────────────────────
+cmd_record() {
+    local rport="$ROBOT_PORT"
+    local lport="$LEADER_PORT"
+    local cams="$CAMERAS"
+    local repo_id="$DATASET_REPO_ID"
+    local n_episodes=50
+    local episode_time=30
+    local reset_time=10
+    local display_ip="$DISPLAY_IP"
+    local display_port="$DISPLAY_PORT"
+    local push=false
+    local resume=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --robot-port)   rport="$2"; shift 2 ;;
+            --leader-port)  lport="$2"; shift 2 ;;
+            --cameras)      cams="$2"; shift 2 ;;
+            --repo-id)      repo_id="$2"; shift 2 ;;
+            --episodes)     n_episodes="$2"; shift 2 ;;
+            --episode-time) episode_time="$2"; shift 2 ;;
+            --reset-time)   reset_time="$2"; shift 2 ;;
+            --display-ip)   display_ip="$2"; shift 2 ;;
+            --display-port) display_port="$2"; shift 2 ;;
+            --push)         push=true; shift ;;
+            --resume)       resume=true; shift ;;
+            *) echo "Unknown option: $1"; usage ;;
+        esac
+    done
+
+    local extra_args=()
+    [[ "$push" == "true" ]]   && extra_args+=(--dataset.push_to_hub=true) || extra_args+=(--dataset.push_to_hub=false)
+    [[ "$resume" == "true" ]] && extra_args+=(--resume=true)
+
+    echo "Recording: $n_episodes ep × ${episode_time}s → $repo_id"
+    [[ "$push" == "true" ]] && echo "Hub: will push after recording"
+    lerobot-record \
+        --robot.type="$ROBOT_TYPE" \
+        --robot.port="$rport" \
+        --robot.id="$ROBOT_ID" \
+        --robot.cameras="$cams" \
+        --teleop.type="$LEADER_TYPE" \
+        --teleop.port="$lport" \
+        --teleop.id="$LEADER_ID" \
+        --display_data=true \
+        --display_ip="$display_ip" \
+        --display_port="$display_port" \
+        "--dataset.repo_id=$repo_id" \
+        "--dataset.num_episodes=$n_episodes" \
+        "--dataset.single_task=$TASK" \
+        "--dataset.fps=30" \
+        "--dataset.episode_time_s=$episode_time" \
+        "--dataset.reset_time_s=$reset_time" \
+        "--dataset.streaming_encoding=true" \
+        "${extra_args[@]}"
 }
 
 # ── serve ─────────────────────────────────────────────────────────────────────
@@ -357,10 +494,13 @@ cmd_train() {
 # ── Main ──────────────────────────────────────────────────────────────────────
 cmd="${1:-}"; shift 2>/dev/null || true
 case "$cmd" in
-    check) cmd_check ;;
-    serve) cmd_serve "$@" ;;
-    infer) cmd_infer "$@" ;;
-    sync)  cmd_sync "$@" ;;
-    train) cmd_train "$@" ;;
-    *)     usage ;;
+    check)  cmd_check ;;
+    rerun)  cmd_rerun ;;
+    teleop) cmd_teleop "$@" ;;
+    record) cmd_record "$@" ;;
+    serve)  cmd_serve "$@" ;;
+    infer)  cmd_infer "$@" ;;
+    sync)   cmd_sync "$@" ;;
+    train)  cmd_train "$@" ;;
+    *)      usage ;;
 esac
