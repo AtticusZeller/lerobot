@@ -142,7 +142,7 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 * `docs/eval.md` — 实机评估 SOP（π0.5 评分 rubric）
 * `docs/inference.md` — gRPC 异步推理部署文档
 
-**协作约定**：被问及 docs/ 下的文档时，优先读 `so101_pipeline.md` / `so101_pi05.md` / `so101_smolvla.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+**协作约定**：被问及 docs/ 下的文档时，优先读 `so101_pipeline.md` / `so101_pi05.md` / `so101_xvla.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
 
 ## References
 

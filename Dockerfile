@@ -40,13 +40,13 @@ WORKDIR /workspace/lerobot
 # Ref: https://docs.astral.sh/uv/guides/integration/docker/#intermediate-layers
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra smolvla --extra feetech --extra async \
+    uv sync --extra xvla --extra feetech --extra async \
     --no-install-project --locked --no-editable
 
 # ── Copy source + install project ──
 COPY README.md src/ src/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --extra smolvla --extra feetech --extra async \
+    uv sync --extra xvla --extra feetech --extra async \
     --locked --no-editable
 
 # ---------------------------------------------------------------------------

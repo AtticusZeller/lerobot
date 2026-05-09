@@ -1,0 +1,63 @@
+# X-VLA Phase II 领域自适应 (PEFT) for SO-ARM101 table-cleanup task
+# 冻结策略：冻结 VLM 和 Policy Transformer，仅训练 Soft Prompts 和 Action Head (约 9M 参数，适配 8GB 显存)
+#
+# X-VLA (~0.9B) 基于 Florence2 骨干，action_mode=auto 自动适配 SO-ARM101 7-dim action
+# 归一化使用 IDENTITY（无需运行 augment_dataset_quantile_stats.py）
+#
+# Usage:
+#   lerobot-train --yaml_config=experiments/xvla_so101_table_cleanup.yaml
+#
+# CLI overrides:
+#   lerobot-train --yaml_config=experiments/xvla_so101_table_cleanup.yaml \
+#       --output_dir=/path/to/output --steps=15000 --batch_size=32
+
+# --- Dataset ---
+dataset:
+  repo_id: Atticuxz/so101-table-cleanup
+
+# --- Policy ---
+policy:
+  type: xvla
+  pretrained_path: lerobot/xvla-base
+  device: cuda
+  dtype: bfloat16
+  push_to_hub: true
+  repo_id: Atticuxz/xvla_so101
+  # Action mode
+  action_mode: auto          # 自动适配 SO-ARM101 单臂 7-dim action
+  max_action_dim: 20         # 模型输出维度；auto 模式将数据集维度 pad 到此值
+  # Freezing — Phase II 领域自适应，冻结骨干网络，仅微调 Soft Prompts 和 Action Head
+  freeze_vision_encoder: true
+  freeze_language_encoder: true
+  train_policy_transformer: false
+  train_soft_prompts: true
+  # Optimizer (AdamW)
+  # 来源: src/lerobot/policies/xvla/configuration_xvla.py
+  optimizer_lr: 1e-4
+  optimizer_betas: [0.9, 0.99]
+  optimizer_eps: 1e-8
+  optimizer_weight_decay: 0.0
+  optimizer_grad_clip_norm: 10.0
+  # Scheduler (CosineDecayWithWarmup)
+  scheduler_warmup_steps: 1000
+  scheduler_decay_steps: 30000
+  scheduler_decay_lr: 2.5e-6
+
+# --- Training ---
+batch_size: 32
+steps: 8000
+save_freq: 2000
+log_freq: 50
+eval_freq: 0
+seed: 1000
+num_workers: 4
+use_policy_training_preset: true
+
+# --- Output ---
+output_dir: ./outputs/xvla_so101
+job_name: xvla_so101_table_cleanup
+
+# --- WandB ---
+wandb:
+  enable: true
+  project: xvla_so101

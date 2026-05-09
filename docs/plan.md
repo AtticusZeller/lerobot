@@ -67,7 +67,7 @@
 #### 3. 多方案微调对比
 - [ ] 定义待对比的微调方案矩阵（初步规划）：
   - 微调方式: `train_expert_only` vs `LoRA` vs 全参微调
-  - 模型: `pi05` vs 其他候选（如 `smolvla`）
+  - 模型: `pi05` vs 其他候选（如 `xvla`）
   - 超参: steps / batch_size / learning_rate 等
 - [ ] 每种方案生成对应的 YAML 配置（`experiments/` 目录）
 

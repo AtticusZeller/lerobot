@@ -2,7 +2,7 @@
 
 ## 1. 概述
 
-本文档描述如何将微调后的 SmolVLA checkpoint 部署到 SO-101 机械臂上进行推理（实机 / 仿真）。
+本文档描述如何将微调后的 X-VLA checkpoint 部署到 SO-101 机械臂上进行推理（实机 / 仿真）。
 
 ### 1.1 部署架构
 
@@ -13,7 +13,7 @@ LeRobot 使用 **gRPC 异步推理架构**，将模型推理与机器人控制�
 │   GPU 服务器        │ ◄────────────────► │   笔记本             │ ◄──────────────► │  SO-101   │
 │                     │                     │                     │                │           │
 │  - Policy Server    │  actions + obs     │  - Robot Client     │  servo cmd    │  - 6 DOF  │
-│  - SmolVLA ckpt     │ ◄───────────────── │  - 控制循环         │ ──────────────► │  - Gripper│
+│  - X-VLA ckpt     │ ◄───────────────── │  - 控制循环         │ ──────────────► │  - Gripper│
 │  - gRPC 服务         │  ─────────────────► │  - 观测采集         │                │  - Camera │
 │                     │                     │  - 录制             │                │           │
 └─────────────────────┘                     └─────────────────────┘                └───────────┘
@@ -206,8 +206,8 @@ python -m lerobot.async_inference.robot_client \
     --robot.id=so101_follower \
     --robot.cameras="{ front: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}, wrist: {type: intelrealsense, serial_number_or_name: 233522074606, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
-    --policy_type=smolvla \
-    --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
+    --policy_type=xvla \
+    --pretrained_name_or_path=Atticuxz/xvla_so101 \
     --policy_device=cuda \
     --actions_per_chunk=50 \
     --chunk_size_threshold=0.5 \
@@ -254,8 +254,8 @@ client_cfg = RobotClientConfig(
     server_address="<GPU_IP>:8080",
     policy_device="cuda",        # 服务端设备（cpu/cuda/mps/xpu）
     client_device="cpu",         # 客户端设备（通常为 cpu）
-    policy_type="smolvla",
-    pretrained_name_or_path="Atticuxz/smolvla_so101_table_cleanup",
+    policy_type="xvla",
+    pretrained_name_or_path="Atticuxz/xvla_so101",
     chunk_size_threshold=0.5,
     actions_per_chunk=50,
 )
@@ -418,8 +418,8 @@ Camera #1:
 ```
 dev.sh CAMERAS key          数据集 info.json              Policy input_features
 ─────────────────           ────────────────              ─────────────────────
-front ──────────────────► observation.images.front ──► SmolVLA input (resize to 512x512)
-wrist ──────────────────► observation.images.wrist ──► SmolVLA input (resize to 512x512)
+front ──────────────────► observation.images.front ──► X-VLA input (no fixed resize unless resize_imgs_with_padding is configured)
+wrist ──────────────────► observation.images.wrist ──► X-VLA input (no fixed resize unless resize_imgs_with_padding is configured)
 
 build_dataset_frame() 自动映射:
   key = "observation.images.front" → values["front"] = camera.read_latest()
@@ -444,7 +444,7 @@ build_dataset_frame() 自动映射:
 
 ```
 outputs/
-└── smolvla_so101/
+└── xvla_so101/
     ├── train_config.json
     ├── training_state/
     └── checkpoints/
@@ -462,13 +462,13 @@ outputs/
 使用本地 checkpoint：
 
 ```bash
---pretrained_name_or_path=./outputs/smolvla_so101/checkpoints/last/pretrained_model
+--pretrained_name_or_path=./outputs/xvla_so101/checkpoints/last/pretrained_model
 ```
 
 ### 4.2 使用 HF Hub Checkpoint
 
 ```bash
---pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup
+--pretrained_name_or_path=Atticuxz/xvla_so101
 ```
 
 ### 4.3 快速切换 Checkpoint（评估用）
@@ -495,9 +495,9 @@ python -m lerobot.async_inference.robot_client \
     --robot.id=so101_follower \
     --robot.cameras="{ front: {type: opencv, index_or_path: /dev/video10, width: 640, height: 480, fps: 30}}" \
     --task="pick up the orange and place it on the plate" \
-    --policy_type=smolvla \
-    --pretrained_name_or_path=Atticuxz/smolvla_so101_table_cleanup \
-    --dataset.repo_id=Atticuxz/eval_smolvla_pick_orange \
+    --policy_type=xvla \
+    --pretrained_name_or_path=Atticuxz/xvla_so101 \
+    --dataset.repo_id=Atticuxz/eval_xvla_pick_orange \
     --dataset.single_task="pick orange" \
     --dataset.streaming_encoding=true \
     --dataset.encoder_threads=2
@@ -521,7 +521,7 @@ python -m lerobot.async_inference.robot_client \
 │   GPU 服务器        │ ◄────────────────► │   IsaacLab 仿真（LeIsaac）          │
 │                     │                     │                                     │
 │  - Policy Server    │  actions + obs     │  - policy_inference.py              │
-│  - SmolVLA ckpt     │ ◄───────────────── │  - LeRobotServicePolicyClient       │
+│  - X-VLA ckpt     │ ◄───────────────── │  - LeRobotServicePolicyClient       │
 │  - gRPC 服务         │  ─────────────────► │  - SO-101 仿真 + 相机 + 物理引擎  │
 │                     │                     │  - 自动成功/超时判定               │
 └─────────────────────┘                     └─────────────────────────────────────┘
@@ -562,10 +562,10 @@ cd /home/atticuszz/DevSpace/leisaac
 
 python scripts/evaluation/policy_inference.py \
     --task=LeIsaac-SO101-PickOrange-v0 \
-    --policy_type=lerobot-smolvla \
+    --policy_type=lerobot-xvla \
     --policy_host=<POLICY_SERVER_IP> \
     --policy_port=8080 \
-    --policy_checkpoint_path=Atticuxz/smolvla_so101_table_cleanup \
+    --policy_checkpoint_path=Atticuxz/xvla_so101 \
     --policy_action_horizon=50 \
     --policy_language_instruction="pick up the orange and place it on the plate" \
     --policy_timeout_ms=15000 \
@@ -582,10 +582,10 @@ cd /home/atticuszz/DevSpace/leisaac
 
 ./run.sh infer \
     --task LeIsaac-SO101-PickOrange-v0 \
-    --policy_type lerobot-smolvla \
+    --policy_type lerobot-xvla \
     --policy_host <POLICY_SERVER_IP> \
     --policy_port 8080 \
-    --policy_checkpoint_path Atticuxz/smolvla_so101_table_cleanup \
+    --policy_checkpoint_path Atticuxz/xvla_so101 \
     --policy_action_horizon 50 \
     --policy_language_instruction "pick up the orange and place it on the plate" \
     --eval_rounds 10
@@ -596,7 +596,7 @@ cd /home/atticuszz/DevSpace/leisaac
 | 参数 | 说明 |
 |------|------|
 | `--task` | LeIsaac 注册的仿真任务 ID |
-| `--policy_type=lerobot-smolvla` | `lerobot-` 前缀 + 策略名（pi05/smolvla/act 等） |
+| `--policy_type=lerobot-xvla` | `lerobot-` 前缀 + 策略名（pi05/xvla/act 等） |
 | `--policy_host` | Policy Server 所在 IP（同机用 `localhost` ） |
 | `--policy_port` | 与 Policy Server 端口一致 |
 | `--policy_checkpoint_path` | HF Hub repo ID 或本地 checkpoint 路径 |
@@ -630,7 +630,7 @@ obs["policy"]
   └─ task_description ───────────► task metadata ───────────────────────►
                                                                             │
                                                                             ▼
-                                                                      SmolVLA 推理
+                                                                      X-VLA 推理
                                                                             │
                                                                             ▼
                                   action_chunk (N, 6) ◄──────────────── gRPC GetActions
@@ -694,9 +694,9 @@ cd /home/atticuszz/DevSpace/leisaac
 
 python scripts/evaluation/policy_inference.py \
     --task=LeIsaac-SO101-PickOrange-v0 \
-    --policy_type=lerobot-smolvla \
+    --policy_type=lerobot-xvla \
     --policy_host=localhost --policy_port=8080 \
-    --policy_checkpoint_path=./outputs/smolvla_so101/checkpoints/last/pretrained_model \
+    --policy_checkpoint_path=./outputs/xvla_so101/checkpoints/last/pretrained_model \
     --policy_action_horizon=50 \
     --policy_language_instruction="pick up the orange and place it on the plate" \
     --eval_rounds=10 \
@@ -731,11 +731,11 @@ EVAL_ROUNDS=10
 LEISAAC_DIR="/home/atticuszz/DevSpace/leisaac"
 
 CHECKPOINTS=(
-    "./outputs/smolvla_so101/checkpoints/2000/pretrained_model"
-    "./outputs/smolvla_so101/checkpoints/4000/pretrained_model"
-    "./outputs/smolvla_so101/checkpoints/6000/pretrained_model"
-    "./outputs/smolvla_so101/checkpoints/last/pretrained_model"
-    "Atticuxz/smolvla_so101_table_cleanup"
+    "./outputs/xvla_so101/checkpoints/2000/pretrained_model"
+    "./outputs/xvla_so101/checkpoints/4000/pretrained_model"
+    "./outputs/xvla_so101/checkpoints/6000/pretrained_model"
+    "./outputs/xvla_so101/checkpoints/last/pretrained_model"
+    "Atticuxz/xvla_so101"
 )
 
 echo "checkpoint,success_rate,success_count,total" > eval_results.csv
@@ -747,7 +747,7 @@ for ckpt in "${CHECKPOINTS[@]}"; do
 
     result=$(cd "$LEISAAC_DIR" && python scripts/evaluation/policy_inference.py \
         --task="$TASK" \
-        --policy_type=lerobot-smolvla \
+        --policy_type=lerobot-xvla \
         --policy_host="$POLICY_SERVER_HOST" \
         --policy_port="$POLICY_SERVER_PORT" \
         --policy_checkpoint_path="$ckpt" \
@@ -834,7 +834,7 @@ bash batch_eval_sim.sh
 * LeRobot 异步推理博客: https://huggingface.co/blog/async-robot-inference
 * LeIsaac 项目: https://github.com/LightwheelAI/leisaac
 * LeIsaac 可用环境列表: `python scripts/environments/list_envs.py`
-* 训练配置: `experiments/smolvla_so101_table_cleanup.yaml`
+* 训练配置: `experiments/xvla_so101_table_cleanup.yaml`
 * 训练数据集: `Atticuxz/so101-table-cleanup`
 * 评估流程文档: [eval.md](./eval.md)
 * 完整训练 Pipeline: [so101_pipeline.md](./so101_pipeline.md)
@@ -846,7 +846,7 @@ bash batch_eval_sim.sh
 ### 支持的策略 (SUPPORTED_POLICIES)
 
 ```python
-SUPPORTED_POLICIES = ["act", "smolvla", "diffusion", "tdmpc", "vqbet", "pi0", "pi05", "groot"]
+SUPPORTED_POLICIES = ["act", "xvla", "diffusion", "tdmpc", "vqbet", "pi0", "pi05", "groot"]
 ```
 
 ### 支持的机器人 (SUPPORTED_ROBOTS)

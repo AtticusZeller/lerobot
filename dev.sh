@@ -4,13 +4,13 @@ set -e
 # Dev convenience wrappers for LeRobot SO-101 table-cleanup workflow
 
 # ── Model presets ─────────────────────────────────────────────────────────────
-declare -A POLICY_TYPE=([smolvla]=smolvla [pi05]=pi05)
+declare -A POLICY_TYPE=([xvla]=xvla [pi05]=pi05)
 declare -A HF_REPO=(
-    [smolvla]="Atticuxz/smolvla_so101"
+    [xvla]="Atticuxz/xvla_so101"
     [pi05]="Atticuxz/pi05_expert_so101"
 )
 declare -A CONFIG_FILE=(
-    [smolvla]="experiments/smolvla_so101_table_cleanup.yaml"
+    [xvla]="experiments/xvla_so101_table_cleanup.yaml"
     [pi05]="experiments/pi05_expert_so101_table_cleanup.yaml"
 )
 
@@ -47,8 +47,8 @@ Commands:
   sync [model] [options]       Single-process inference (no server needed)
   train [model] [options]      Train with experiment config
 
-Models (default: smolvla):
-  smolvla   policy: smolvla   ckpt: ${HF_REPO[smolvla]}
+Models (default: xvla):
+  xvla   policy: xvla   ckpt: ${HF_REPO[xvla]}
   pi05      policy: pi05      ckpt: ${HF_REPO[pi05]}
 
 Workflow:
@@ -59,7 +59,7 @@ Workflow:
     dev.sh sync [model]                   — single-process inference, no server needed
 
 Rerun options:
-  (none — always binds gRPC:$DISPLAY_PORT + Web:9090)
+  (none — always binds gRPC:$DISPLAY_PORT + Web:9091)
 
 Teleop options:
   --robot-port PORT   Robot serial port (default: $ROBOT_PORT)
@@ -118,7 +118,7 @@ Task: "$TASK"
 
 Examples:
   dev.sh check
-  dev.sh rerun                              # Terminal A: start Rerun viewer (browse http://localhost:9090)
+  dev.sh rerun                              # Terminal A: start Rerun viewer (browse http://localhost:9091)
   dev.sh teleop                             # Terminal B: pre-check teleop (no recording)
   dev.sh teleop --display-ip 192.168.1.x   # connect to remote Rerun viewer
   dev.sh record                             # record 50 episodes to $DATASET_REPO_ID
@@ -127,12 +127,12 @@ Examples:
   dev.sh serve                              # start gRPC server (default: 0.0.0.0:8080)
   dev.sh serve --host 0.0.0.0 --port 8080
   dev.sh serve --fps 15                     # lower FPS for slower hardware
-  dev.sh infer                              # connect to local server as smolvla
+  dev.sh infer                              # connect to local server as xvla
   dev.sh infer pi05                         # connect to local server as pi05
   dev.sh infer --server 192.168.1.100:8080  # connect to remote server
-  dev.sh infer --ckpt ./outputs/smolvla_so101_20260415_1000/pretrained_model
+  dev.sh infer --ckpt ./outputs/xvla_so101_20260415_1000/pretrained_model
   dev.sh infer --step 10000               # promote step-010000 to main, then use it
-  dev.sh sync                               # single-process inference as smolvla
+  dev.sh sync                               # single-process inference as xvla
   dev.sh sync pi05                          # single-process inference as pi05
   dev.sh sync --step 10000                  # use checkpoint at step 10000
   dev.sh sync --episodes 10                 # run 10 episodes
@@ -198,9 +198,9 @@ for k, v in meta.features.items():
 
 # ── rerun ─────────────────────────────────────────────────────────────────────
 cmd_rerun() {
-    echo "Starting Rerun web viewer (gRPC:${DISPLAY_PORT} + Web:9090) ..."
-    echo "Browse: http://localhost:9090"
-    rerun --web-viewer
+    echo "Starting Rerun web viewer (gRPC:${DISPLAY_PORT} + Web:9091) ..."
+    echo "Browse: http://localhost:9091"
+    rerun --web-viewer --web-viewer-port 9091
 }
 
 # ── teleop ────────────────────────────────────────────────────────────────────
@@ -314,7 +314,7 @@ cmd_serve() {
 
 # ── infer ─────────────────────────────────────────────────────────────────────
 cmd_infer() {
-    local model="smolvla"
+    local model="xvla"
     if [[ $# -gt 0 && ! "$1" =~ ^-- ]]; then
         model="$1"; shift
     fi
@@ -383,7 +383,7 @@ print('Done: ${revision} is now on main')
 
 # ── sync ──────────────────────────────────────────────────────────────────────
 cmd_sync() {
-    local model="smolvla"
+    local model="xvla"
     if [[ $# -gt 0 && ! "$1" =~ ^-- ]]; then
         model="$1"; shift
     fi
@@ -445,7 +445,7 @@ cmd_sync() {
 
 # ── train ─────────────────────────────────────────────────────────────────────
 cmd_train() {
-    local model="smolvla"
+    local model="xvla"
     if [[ $# -gt 0 && ! "$1" =~ ^-- ]]; then
         model="$1"; shift
     fi
