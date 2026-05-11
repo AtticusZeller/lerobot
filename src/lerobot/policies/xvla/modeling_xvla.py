@@ -452,6 +452,22 @@ class XVLAPolicy(PreTrainedPolicy):
                 revision=revision,
                 **kwargs,
             )
+        elif not getattr(config, "florence_config", None):
+            # If config is provided (e.g. from yaml) but missing florence_config,
+            # load the hub config and populate florence_config.
+            hub_config = PreTrainedConfig.from_pretrained(
+                pretrained_name_or_path=pretrained_name_or_path,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+                **kwargs,
+            )
+            if hasattr(hub_config, "florence_config"):
+                config.florence_config = hub_config.florence_config
 
         model_id = str(pretrained_name_or_path)
         instance = cls(config, **kwargs)

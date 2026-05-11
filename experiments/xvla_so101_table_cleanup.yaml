@@ -18,18 +18,23 @@ dataset:
 # --- Policy ---
 policy:
   type: xvla
-  pretrained_path: lerobot/xvla-base
   device: cuda
   dtype: bfloat16
   push_to_hub: true
   repo_id: Atticuxz/xvla_so101
+  # https://huggingface.co/lerobot/xvla-base/blob/main/config.json
+  pretrained_path: lerobot/xvla-base
   # Action mode
-  action_mode: auto          # 自动适配 SO-ARM101 单臂 7-dim action
-  max_action_dim: 20         # 模型输出维度；auto 模式将数据集维度 pad 到此值
+  action_mode: auto # 自动适配 SO-ARM101 单臂 7-dim action
+  max_action_dim: 20 # Match pretrained model
+  max_state_dim: 20 # Match pretrained model
+  use_proprio: True # Use proprioceptive state
+  # Vision
+  resize_imgs_with_padding: [224, 224] # modeling_florence2.py，only support square feature maps for now 确保特征图为正方形
   # Freezing — Phase II 领域自适应，冻结骨干网络，仅微调 Soft Prompts 和 Action Head
-  freeze_vision_encoder: true
-  freeze_language_encoder: true
-  train_policy_transformer: false
+  freeze_vision_encoder: false
+  freeze_language_encoder: false
+  train_policy_transformer: true
   train_soft_prompts: true
   # Optimizer (AdamW)
   # 来源: src/lerobot/policies/xvla/configuration_xvla.py
