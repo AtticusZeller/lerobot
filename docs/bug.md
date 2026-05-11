@@ -368,3 +368,40 @@ groups   # 确认包含 plugdev video
 修改 `src/lerobot/datasets/utils.py`：
 不再复用 `huggingface_hub` 的网络错误异常，将其改为抛出标准的 `ValueError`，以正确打印内置的友好提示。同时在文件顶部移除了该报错异常的导入。
 对于用户导致报错的数据集 `Atticuxz/so101-table-cleanup`，我们通过 `HfApi().create_tag` 手动打上了 `v3.0` 标签来满足其依赖。
+
+---
+
+## X-VLA 微调 loss 初始值 ~2000：normalization_mapping 未显式配置
+**日期**: 2026-05-11
+**分类**: 训练配置 / X-VLA
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+- **触发条件**：使用 `experiments/xvla_so101_table_cleanup.yaml` 启动 X-VLA 微调，YAML 中未设置 `normalization_mapping`
+- **具体表现**：训练 loss 初始值 ~2000 并不收敛（正常应 <10）
+
+### 2. 根本原因
+`from_pretrained` 传入 YAML 构建的 config 对象时（`config=cfg`），会**跳过**加载 hub 的 `config.json`（见 `pretrained.py:94`）。因此 `lerobot/xvla-base` 预训练模型使用的 `ACTION: MEAN_STD` 不会被自动继承，而是落回 `configuration_xvla.py` 的 Python 默认值 `ACTION: IDENTITY`。
+
+IDENTITY 不对 action 做任何缩放，Flow Matching 的 MSE loss 直接作用在原始关节角度值上，数值量级大幅偏高。
+
+### 3. 解决方案
+在 YAML 的 `policy:` 块中显式声明，以下字段均须与 hub config.json 对齐：
+
+```yaml
+policy:
+  normalization_mapping:
+    VISUAL: IDENTITY
+    STATE: IDENTITY
+    ACTION: MEAN_STD   # ← 关键，预训练模型用 MEAN_STD
+  chunk_size: 30           # 预训练值，默认 32 导致序列长度不匹配
+  n_action_steps: 30       # 同上
+  tokenizer_max_length: 1024  # 预训练值，默认 64
+  optimizer_betas: [0.9, 0.95]   # 预训练值，默认 0.99
+  optimizer_weight_decay: 0.0001  # 预训练值，默认 0.0
+```
+
+修复后 1000 steps 内即可收敛。
+
+### 4. 经验法则
+使用 `pretrained_path` 加载 X-VLA（或其他 LeRobot 模型）时，**所有与预训练不同的默认值字段必须在 YAML 中显式覆盖**，不能依赖 hub config.json 的自动继承。可以对照 `https://huggingface.co/<model>/blob/main/config.json` 逐字段比对。

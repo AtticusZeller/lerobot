@@ -1,8 +1,10 @@
-# X-VLA Phase II 领域自适应 (PEFT) for SO-ARM101 table-cleanup task
-# 冻结策略：冻结 VLM 和 Policy Transformer，仅训练 Soft Prompts 和 Action Head (约 9M 参数，适配 8GB 显存)
+# X-VLA fine-tuning for SO-ARM101 table-cleanup task
+# 冻结 VLM 骨干（Vision + Language Encoder），训练 Policy Transformer + Soft Prompts
 #
 # X-VLA (~0.9B) 基于 Florence2 骨干，action_mode=auto 自动适配 SO-ARM101 7-dim action
-# 归一化使用 IDENTITY（无需运行 augment_dataset_quantile_stats.py）
+# 字段未在此处列出的均从 pretrained_path (lerobot/xvla-base) 的 config.json 加载，
+# 但注意 from_pretrained 传入 config 时会绕过 hub config.json，
+# 所以关键字段必须在此处显式设置以匹配预训练模型。
 #
 # Usage:
 #   lerobot-train --yaml_config=experiments/xvla_so101_table_cleanup.yaml
@@ -24,24 +26,33 @@ policy:
   repo_id: Atticuxz/xvla_so101
   # https://huggingface.co/lerobot/xvla-base/blob/main/config.json
   pretrained_path: lerobot/xvla-base
+  # Normalization — 必须显式设置，否则默认 ACTION: IDENTITY 导致 loss ~2000
+  # 预训练模型使用 MEAN_STD 归一化 action（见 policy_preprocessor.json）
+  normalization_mapping:
+    VISUAL: IDENTITY
+    STATE: IDENTITY
+    ACTION: MEAN_STD
   # Action mode
   action_mode: auto # 自动适配 SO-ARM101 单臂 7-dim action
+  chunk_size: 30 # 匹配预训练模型 (默认 32 会导致序列长度不匹配)
+  n_action_steps: 30
   max_action_dim: 20 # Match pretrained model
   max_state_dim: 20 # Match pretrained model
   use_proprio: True # Use proprioceptive state
+  # Tokenizer — 匹配预训练 (默认 64 远小于预训练的 1024)
+  tokenizer_max_length: 1024
   # Vision
-  resize_imgs_with_padding: [224, 224] # modeling_florence2.py，only support square feature maps for now 确保特征图为正方形
-  # Freezing — Phase II 领域自适应，冻结骨干网络，仅微调 Soft Prompts 和 Action Head
-  freeze_vision_encoder: false
+  resize_imgs_with_padding: [224, 224] # modeling_florence2.py only supports square feature maps
+  # Freezing — 冻结 VLM 骨干，仅训练 Policy Transformer + Soft Prompts
+  freeze_vision_encoder: true
   freeze_language_encoder: false
   train_policy_transformer: true
   train_soft_prompts: true
-  # Optimizer (AdamW)
-  # 来源: src/lerobot/policies/xvla/configuration_xvla.py
+  # Optimizer (AdamW) — 来源: lerobot/xvla-base config.json
   optimizer_lr: 1e-4
-  optimizer_betas: [0.9, 0.99]
+  optimizer_betas: [0.9, 0.95] # 匹配预训练 (之前错误配置为 0.99)
   optimizer_eps: 1e-8
-  optimizer_weight_decay: 0.0
+  optimizer_weight_decay: 0.0001 # 匹配预训练 (之前错误配置为 0.0)
   optimizer_grad_clip_norm: 10.0
   # Scheduler (CosineDecayWithWarmup)
   scheduler_warmup_steps: 1000
@@ -50,8 +61,8 @@ policy:
 
 # --- Training ---
 batch_size: 32
-steps: 8000
-save_freq: 2000
+steps: 2000
+save_freq: 500
 log_freq: 50
 eval_freq: 0
 seed: 1000
