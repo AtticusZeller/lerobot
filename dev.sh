@@ -15,7 +15,7 @@ declare -A CONFIG_FILE=(
 )
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
-TASK="Grab pens and place into green box"
+TASK="Grab the red block into the cardboard box"
 HOST="0.0.0.0"
 PORT="8080"
 ROBOT_TYPE="so101_follower"
@@ -402,7 +402,8 @@ cmd_sync() {
     local n_episodes=1
     local fps=30
     local hf_owner="${HF_REPO[$model]%%/*}"
-    local repo_id="${hf_owner}/eval_sync_${model}_$(date +%Y%m%d_%H%M)"
+    local ts; ts=$(date +%Y%m%d_%H%M)
+    local repo_id=""
     local push=false
     local step=""
 
@@ -419,6 +420,12 @@ cmd_sync() {
             *) echo "Unknown option: $1"; usage ;;
         esac
     done
+
+    # Auto-generate timestamped repo_id
+    if [[ -z "$repo_id" ]]; then
+        repo_id="${hf_owner}/eval_sync_${model}"
+    fi
+    repo_id="${repo_id}_${ts}"
 
     # Resolve --step: download specific checkpoint revision to local cache
     if [[ -n "$step" ]]; then
@@ -475,16 +482,17 @@ cmd_train() {
         esac
     done
 
-    # Auto-generate timestamped output dir if not explicitly set
+    # Auto-generate timestamped output dir and repo_id
     local ts; ts=$(date +%Y%m%d_%H%M)
     if [[ -z "$output_dir" ]]; then
-        output_dir="./outputs/${model}_so101_${ts}"
+        output_dir="./outputs/${model}_so101"
     fi
+    output_dir="${output_dir}_${ts}"
 
-    # Auto-generate timestamped repo_id for Hub, unless overridden
     if [[ -z "$repo_id" ]]; then
-        repo_id="${HF_REPO[$model]}_${ts}"
+        repo_id="${HF_REPO[$model]}"
     fi
+    repo_id="${repo_id}_${ts}"
 
     # Build push args
     local hub_args=()
