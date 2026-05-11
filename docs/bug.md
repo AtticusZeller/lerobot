@@ -352,3 +352,19 @@ groups   # 确认包含 plugdev video
 - **优先用 `lerobot-find-cameras` 实机验证**，不要只靠 `ls /dev/video*` 判断，同一相机的多 node 只有一个能读帧。
 - **RealSense 额外依赖**：必须装 `pyrealsense2`，并确保 `librealsense` udev 规则已安装（通常随包提供），否则需要 root 才能访问设备。
 - **权限变更后必须重新登录**，`usermod -aG` 的新组只对新会话生效。
+
+---
+
+## dataset utils 中 huggingface_hub 的 RevisionNotFoundError 类型错误
+**日期**: 2026-05-11
+**分类**: 代码库 bug / huggingface_hub
+**状态**: ✅ 已解决
+
+### 1. 问题情况
+当使用未打版本标签（_version_）的数据集运行 `lerobot-train` 时，`lerobot.datasets.utils.get_safe_version` 会判断出数据集无标签。随后尝试抛出 `huggingface_hub.errors.RevisionNotFoundError` 并附带友好的使用提示。
+但由于新版本的 `huggingface_hub` 重构了异常类，`RevisionNotFoundError` 现在继承自 `HfHubHTTPError`，强制要求传入 HTTP `response` 对象。仅传入提示字符串会导致 `TypeError: HfHubHTTPError.__init__() missing 1 required keyword-only argument: 'response'`，使本来友好的提示变成了崩溃报错。
+
+### 2. 解决方案
+修改 `src/lerobot/datasets/utils.py`：
+不再复用 `huggingface_hub` 的网络错误异常，将其改为抛出标准的 `ValueError`，以正确打印内置的友好提示。同时在文件顶部移除了该报错异常的导入。
+对于用户导致报错的数据集 `Atticuxz/so101-table-cleanup`，我们通过 `HfApi().create_tag` 手动打上了 `v3.0` 标签来满足其依赖。
