@@ -83,7 +83,7 @@ X-VLA 的图像预处理由 `processor_xvla.py` 中的处理器步骤完成：
 2. `XVLAImageNetNormalizeProcessorStep` — 应用 ImageNet 归一化（mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]）
 3. `XVLAAddDomainIdProcessorStep` — 添加 domain_id（SO-ARM101 新微调用 domain_id=0）
 
-X-VLA 默认**不固定 resize 图像**（`resize_imgs_with_padding` 默认为 `None`）。若需强制 resize，可在 YAML 中设置 `policy.resize_imgs_with_padding: [H, W]`。
+X-VLA 默认**不固定 resize 图像**（`resize_imgs_with_padding` 默认为 `None`）。**注意：** 因为 Florence-2 模型内部计算位置编码时强行校验特征图长宽一致性（`assert h * w == num_tokens`），它**严格要求输入图像必须是正方形**。如果数据集原图非正方形，**必须**在 YAML 中设置 `policy.resize_imgs_with_padding: [224, 224]` 以强制加黑边填充，否则会导致 `AssertionError`。
 
 ---
 
