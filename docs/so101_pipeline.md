@@ -78,6 +78,9 @@ hf auth whoami
 hf upload Atticuxz/so101-table-cleanup \
     /root/autodl-tmp/lerobot/youliangtan/so101-table-cleanup \
     --type dataset
+
+# 为最新提交打上 v3.0 标签（LeRobot 读取所必需）
+hf repos tag create Atticuxz/so101-table-cleanup v3.0 --type dataset
 ```
 
 之后训练命令中使用 `--dataset.repo_id=Atticuxz/so101-table-cleanup` 即可。
@@ -290,8 +293,9 @@ python -m lerobot.async_inference.robot_client \
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
-│ Step 1c: 上传转换后数据集到 Hub                           │
+│ Step 1c: 上传转换后数据集到 Hub 并打上标签                │
 │ 命令: hf upload your_username/dataset_name ...            │
+│      hf repos tag create your_username/... v3.0          │
 └─────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────┐
