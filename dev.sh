@@ -24,7 +24,7 @@ ROBOT_ID="so101_follower"
 LEADER_TYPE="so101_leader"
 LEADER_PORT="/dev/ttyACM1"
 LEADER_ID="so101_leader"
-CAMERAS='{ front: {type: opencv, index_or_path: /dev/video6, width: 640, height: 480, fps: 30}, wrist: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30}}'
+CAMERAS='{ front: {type: opencv, index_or_path: /dev/video6, width: 640, height: 480, fps: 30}, d435_color: {type: opencv, index_or_path: /dev/video0, width: 640, height: 480, fps: 30}}'
 ACTIONS_PER_CHUNK=50
 CHUNK_THRESHOLD=0.5
 DISPLAY_IP="127.0.0.1"
@@ -406,6 +406,7 @@ cmd_sync() {
     local repo_id=""
     local push=false
     local step=""
+    local extra=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -417,7 +418,7 @@ cmd_sync() {
             --fps)        fps="$2"; shift 2 ;;
             --repo-id)    repo_id="$2"; shift 2 ;;
             --push)       push=true; shift ;;
-            *) echo "Unknown option: $1"; usage ;;
+            *)            extra+=("$1"); shift ;;
         esac
     done
 
@@ -455,7 +456,8 @@ cmd_sync() {
         "--dataset.single_task=$TASK" \
         "--dataset.fps=$fps" \
         "--dataset.num_episodes=$n_episodes" \
-        "${hub_args[@]}"
+        "${hub_args[@]}" \
+        "${extra[@]}"
 }
 
 # ── train ─────────────────────────────────────────────────────────────────────

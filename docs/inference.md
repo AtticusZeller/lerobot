@@ -426,6 +426,10 @@ build_dataset_frame() 自动映射:
   key = "observation.images.wrist" → values["wrist"] = camera.read_latest()
 ```
 
+> **⚠️ 避坑指南（关于 rename_map 失效）**：
+> 理论上，如果物理相机的 key（如 `wrist`）与模型期望的 key（如 `d435_color`）不一致，可以通过 `--dataset.rename_map` 动态映射。但当前版本 LeRobot 源码（如 `lerobot_record.py`）在实例化策略时漏传了该参数，导致校验失败报错 `Feature mismatch`。
+> **强烈建议**：直接在启动脚本（如 `dev.sh`）的 `CAMERAS` 字典中，将物理相机的 key 改为与模型 config 一致的名字，从源头规避映射问题。
+
 ### 3.4 其他重要配置
 
 | 配置项 | 说明 | 必须一致 |

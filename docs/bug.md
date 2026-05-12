@@ -416,3 +416,27 @@ policy:
 
 ### 4. 经验法则
 使用 `pretrained_path` 加载 X-VLA（或其他 LeRobot 模型）时，**所有与预训练不同的默认值字段必须在 YAML 中显式覆盖**，不能依赖 hub config.json 的自动继承。可以对照 `https://huggingface.co/<model>/blob/main/config.json` 逐字段比对。
+
+---
+
+## 推理/录制时遇到 Feature mismatch 且 rename_map 无效
+**日期**: 2026-05-12
+**分类**: 推理配置 / 代码库 bug
+**状态**: ✅ 已规避
+
+### 1. 问题情况
+- **触发条件**: 运行 `bash dev.sh sync --ckpt Atticuxz/xvla_so101` 或尝试录制。
+- **具体表现**: 报错 `ValueError: Feature mismatch between dataset/environment and policy config. Missing features: ['observation.images.d435_color'], Extra features: ['observation.images.wrist']`。即使通过命令行传入 `--dataset.rename_map '{"observation.images.wrist": "observation.images.d435_color"}'` 也依然报错。
+
+### 2. 根本原因
+- 物理环境配置中（如 `dev.sh` 的 `CAMERAS` 变量）定义的手臂相机名称为 `wrist`，而预训练模型 `Atticuxz/xvla_so101` 配置文件中期望的名称是 `d435_color`。
+- LeRobot 官方推理代码（`src/lerobot/scripts/lerobot_record.py` 第 557 行左右）在实例化策略时，**漏传了 `rename_map` 参数给 `make_policy()` 函数**，导致 `make_policy` 内部在进行特征一致性校验（`validate_visual_features_consistency`）时仍然看到的是映射前的原始 key，从而抛出异常。
+
+### 3. 解决方案
+不要依赖 `--dataset.rename_map` 命令行参数。直接在启动环境的配置中（例如 `dev.sh` 的 `CAMERAS` 环境变量），**将本地相机的 key 改为与模型期望的 key 完全一致**，从物理观测源头对齐命名。
+```bash
+# 修改前：
+CAMERAS='{ front: {...}, wrist: {type: opencv, index_or_path: /dev/video0...}}'
+# 修改后：
+CAMERAS='{ front: {...}, d435_color: {type: opencv, index_or_path: /dev/video0...}}'
+```
