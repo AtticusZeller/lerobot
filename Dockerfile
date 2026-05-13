@@ -66,7 +66,8 @@ ENV LC_ALL=en_US.UTF-8
 
 WORKDIR /workspace/lerobot
 
-# ── Copy uv-managed Python + built venv (includes lerobot) ──
+# ── Copy uv binary + managed Python + built venv (includes lerobot) ──
+COPY --from=builder /bin/uv /bin/uv
 COPY --from=builder /root/.local/share/uv /root/.local/share/uv
 COPY --from=builder /workspace/lerobot/.venv .venv
 
