@@ -1,0 +1,66 @@
+# SmolVLA 全量微调 Action Expert for SO-ARM101 table-cleanup task
+# 冻结 SigLIP Vision Encoder + SmolVLM2 VLM，仅训练 Action Expert
+#
+# SmolVLA (~450M) 比 Pi0.5 (~3B) 轻量 6x+，单卡 16GB+ 即可微调
+# 归一化使用 MEAN_STD（不需要运行 augment_dataset_quantile_stats.py）
+#
+# Usage:
+#   lerobot-train --yaml_config=experiments/smolvla_so101_table_cleanup.yaml
+#
+# CLI overrides:
+#   lerobot-train --yaml_config=experiments/smolvla_so101_table_cleanup.yaml \
+#       --output_dir=/path/to/output --steps=15000 --batch_size=32
+
+# --- Dataset ---
+dataset:
+  repo_id: Atticuxz/so101-table-cleanup
+
+# --- Policy ---
+policy:
+  type: smolvla
+  pretrained_path: lerobot/smolvla_base # 预训练基座 (~450M)
+  device: cuda
+  push_to_hub: true
+  compile_model: false
+  repo_id: Atticuxz/smolvla_so101 # 训练结束后自动上传到 HF Hub
+  # SmolVLA 默认值（显式列出，方便调参且防止代码默认值漂移）
+  # 来源: src/lerobot/policies/smolvla/configuration_smolvla.py 与 pre-trained config.json
+  chunk_size: 50
+  n_action_steps: 50
+  resize_imgs_with_padding: [512, 512]
+  normalization_mapping:
+    VISUAL: IDENTITY
+    STATE: MEAN_STD
+    ACTION: MEAN_STD
+  train_expert_only: true # 冻结 VLM，仅训练 Action Expert
+  freeze_vision_encoder: true # 冻结 SigLIP 视觉编码器
+  train_state_proj: true # 训练 state 投影层
+  # Optimizer (AdamW)
+  optimizer_lr: 1e-4
+  optimizer_betas: [0.9, 0.95]
+  optimizer_eps: 1e-8
+  optimizer_weight_decay: 1e-10
+  optimizer_grad_clip_norm: 10
+  # Scheduler (CosineDecayWithWarmup)
+  scheduler_warmup_steps: 1000
+  scheduler_decay_steps: 30000
+  scheduler_decay_lr: 2.5e-6
+
+# --- Training ---
+batch_size: 32 # SmolVLA 轻量，可开大 batch；显存不够降至 32/16
+steps: 8000 # 官方推荐起点；数据量标准(~50 episodes)用 15k~20k
+save_freq: 2000 # 每 2000 步保存 checkpoint
+log_freq: 50
+eval_freq: 0 # SO-ARM101 无仿真环境，关闭评估
+seed: 1000
+num_workers: 4
+use_policy_training_preset: true # 优化器/调度器已显式写在 policy 段
+
+# --- Output ---
+output_dir: /root/autodl-tmp/outputs/smolvla_so101
+job_name: smolvla_so101_table_cleanup
+
+# --- WandB ---
+wandb:
+  enable: true
+  project: smolvla_so101

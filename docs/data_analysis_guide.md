@@ -329,7 +329,7 @@ X: state[t],   Y: action[t-L : t-L+chunk_size]
 | 热图特征 | 推荐策略 |
 |---|---|
 | 大面积冷色 | ACT / DiffusionPolicy（MSE 模式）均可 |
-| 大面积暖色 | X-VLA / π0 / DiffusionPolicy（diffusion 模式）|
+| 大面积暖色 | SmolVLA / X-VLA / π0 / DiffusionPolicy（diffusion 模式）|
 | 冷暖混合 | 生成式策略更稳健 |
 
 **理论依据**

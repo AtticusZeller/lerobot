@@ -2,10 +2,10 @@
 set -e
 
 # Defaults
-DEFAULT_CKPT_BASE="/root/autodl-tmp/outputs/xvla_so101/20260413_152921/checkpoints"
-REPO_ID="Atticuxz/xvla_so101"
+DEFAULT_CKPT_BASE="/root/autodl-tmp/outputs/smolvla_so101/20260413_152921/checkpoints"
+REPO_ID="Atticuxz/smolvla_so101"
 DATASET="Atticuxz/so101-table-cleanup"
-POLICY="xvla"
+POLICY="smolvla"
 
 usage() {
     echo "Usage: $0 [OPTIONS] [STEP...]"

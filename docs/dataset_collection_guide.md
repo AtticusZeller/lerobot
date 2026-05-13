@@ -5,7 +5,7 @@
 > **适用范围**
 > - 机器人：SO-ARM101（ `so101_follower` + `so101_leader` ）
 > - 采集方式：**Leader Arm 遥操作**（不含 HIL、手机遥操、仿真）
-> - 目标策略：X-VLA（Florence2 + Soft Prompts，**无需子任务标注**）/ Pi0.5（**需要子任务标注**）
+> - 目标策略：SmolVLA / X-VLA（**无需子任务标注**）/ Pi0.5（**需要子任务标注**）
 
 ---
 
@@ -353,7 +353,7 @@ docker run -it -p 7860:7860 --platform=linux/amd64 --gpus all \
 在 Action Insights → **Cross-Episode Action Variance Heatmap**（All Episodes 模式）：
 
 * 重点检查：是否有某个维度**全程冷色（低方差）** → 该关节从未被充分激活 → 检查任务是否需要该维度，考虑补录更多 coverage
-* 暖色区域说明数据多样性正常，X-VLA 可直接处理
+* 暖色区域说明数据多样性正常，SmolVLA / X-VLA 可直接处理
 
 > **注意**：**State–Action Temporal Alignment（§2.4）** 和 **Action Autocorrelation（§2.3）** 是训练/推理阶段的调优指标，不属于采集阶段质量检查。详见 [so101_pipeline.md §3](./so101_pipeline.md) 和 [inference.md §3.1](./inference.md)。
 
@@ -453,11 +453,11 @@ lerobot-replay \
 | 策略 | 需要 Task 标签 | 需要 Subtask 标签 |
 |------|---------------|------------------|
 | ACT / Diffusion | ✅ | ❌ |
-| **X-VLA**（Florence2 + Soft Prompts） | ✅ | ❌ |
+| **SmolVLA / X-VLA** | ✅ | ❌ |
 | **Pi0.5** | ✅ | ✅（sparse + dense） |
 | SARM | ✅ | ✅（dual 模式） |
 
-> **结论**：如果只训练 X-VLA，**跳过整个 7.2 节**，只需保证 Task 标签质量即可。
+> **结论**：如果只训练 SmolVLA 或 X-VLA，**跳过整个 7.2 节**，只需保证 Task 标签质量即可。
 
 ### 7.2 Pi0.5 / SARM 的子任务标注（VLM 自动）
 
@@ -467,7 +467,7 @@ lerobot-replay \
 
 | 模式 | 说明 | 适用策略 |
 |------|------|---------|
-| `single_stage` | 不标注子任务 | X-VLA / ACT |
+| `single_stage` | 不标注子任务 | SmolVLA / X-VLA / ACT |
 | `dense_only` | VLM 生成细粒度子任务 | - |
 | `dual` | sparse（高层） + dense（细粒度） | **Pi0.5 / SARM** |
 
@@ -559,14 +559,14 @@ python src/lerobot/data_processing/sarm_annotations/subtask_annotation.py \
 
 ## 9. 快速参考流程
 
-### 9.1 X-VLA 流程（简单）
+### 9.1 SmolVLA / X-VLA 流程（简单）
 
 ```
 1. 硬件校准            lerobot-calibrate
 2. 遥操作录制 ≥50 ep   lerobot-record --dataset.single_task=...
 3. 可视化 & 质检       lerobot-dataset-viz / 在线 Visualizer
 4. 清洗               lerobot-edit-dataset (delete_episodes / modify_tasks)
-5. 训练               lerobot-train --policy.type=xvla
+5. 训练               lerobot-train --policy.type=smolvla  # 或 xvla
 ```
 
 ### 9.2 Pi0.5 流程（含子任务标注）

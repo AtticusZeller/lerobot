@@ -8,6 +8,7 @@
 
 | 模型 | 子文档 | 基座 | 参数量 | 最低显存 |
 |------|--------|------|--------|---------|
+| **SmolVLA** | [so101_smolvla.md](./so101_smolvla.md) | `lerobot/smolvla_base` (~450M) | ~450M | ~8-12 GB |
 | **X-VLA** | [so101_xvla.md](./so101_xvla.md) | `lerobot/xvla-base` (~0.9B) | ~0.9B | ~16-24 GB |
 | **Pi0.5** | [so101_pi05.md](./so101_pi05.md) | `lerobot/pi05_base` (~3B) | ~3B | ~14-16 GB |
 
@@ -30,6 +31,9 @@
 按你选择的模型安装对应依赖：
 
 ```bash
+# SmolVLA
+uv sync --extra "smolvla" --extra "dev" --extra "feetech"
+
 # X-VLA
 uv sync --extra "xvla" --extra "dev" --extra "feetech"
 
@@ -187,6 +191,7 @@ rename_map:
 
 | 模型 | 归一化模式 | 是否需要额外数据处理 |
 |------|-----------|-------------------|
+| **SmolVLA** | MEAN_STD | **不需要**，数据集默认包含 mean/std |
 | **X-VLA** | IDENTITY | **不需要**，无需额外归一化处理 |
 | **Pi0.5** | MEAN_STD（推荐覆盖） | **不需要**，YAML 已配置覆盖为 MEAN_STD，详见 [so101_pi05.md](./so101_pi05.md#3-归一化模式选择) |
 
@@ -205,6 +210,16 @@ rename_map:
 ### 训练命令
 
 > 具体训练参数、YAML 配置、steps 建议请参考对应模型子文档。
+
+**SmolVLA**（详见 [so101_smolvla.md](./so101_smolvla.md#2-训练命令与参数)）：
+
+```bash
+lerobot-train \
+    --policy.path=lerobot/smolvla_base \
+    --dataset.repo_id=Atticuxz/so101-table-cleanup \
+    --batch_size=64 --steps=20000 \
+    --output_dir=/root/autodl-tmp/outputs/smolvla_so101
+```
 
 **X-VLA**（详见 [so101_xvla.md](./so101_xvla.md#2-训练命令与参数)）：
 
@@ -244,7 +259,7 @@ GPU 服务器 (Policy Server) ← gRPC → 笔记本 (Robot Client) ← USB → 
 ```
 
 **关键特性**:
-- X-VLA (`xvla`) 和 Pi0.5 (`pi05`) 均在支持列表中
+- SmolVLA (`smolvla`)、X-VLA (`xvla`) 和 Pi0.5 (`pi05`) 均在支持列表中
 - 异步推理消除"等待推理"的空闲帧，实现更平滑的控制
 - 支持本地部署和远程部署
 
@@ -300,6 +315,7 @@ python -m lerobot.async_inference.robot_client \
                             ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Step 2: 模型特定数据准备                                  │
+│ - SmolVLA: 无需额外处理                                   │
 │ - X-VLA: 无需额外处理                                      │
 │ - Pi0.5:  推荐 MEAN_STD，无需额外处理                     │
 │ 详见对应模型子文档                                        │
@@ -329,7 +345,7 @@ python -m lerobot.async_inference.robot_client \
 
 ```
 outputs/
-├── xvla_so101/                       # 或 pi05_expert_so101/
+├── smolvla_so101/                    # 或 xvla_so101/
 │   ├── train_config.json
 │   ├── training_state/
 │   └── checkpoints/
@@ -363,4 +379,4 @@ outputs/
 
 **更新记录**：
 * v1.0~v1.5：初始版本至 Pi0.5 专属文档（历史记录见 git log）
-* v2.0：**文档重构**：拆分为通用 Pipeline + 模型子文档（Pi0.5 / X-VLA），支持多模型切换
+* v2.0：**文档重构**：拆分为通用 Pipeline + 模型子文档（Pi0.5 / X-VLA / SmolVLA），支持多模型切换
