@@ -23,7 +23,8 @@ policy:
   device: cuda
   dtype: bfloat16
   push_to_hub: true
-  repo_id: Atticuxz/xvla_so101
+  repo_id: Atticuxz/xvla_so101_full
+
   # https://huggingface.co/lerobot/xvla-base/blob/main/config.json
   pretrained_path: lerobot/xvla-base
   # Normalization — 必须显式设置，否则默认 ACTION: IDENTITY 导致 loss ~2000
@@ -44,7 +45,7 @@ policy:
   # Vision
   resize_imgs_with_padding: [224, 224] # modeling_florence2.py only supports square feature maps
   # Freezing — 冻结 VLM 骨干，仅训练 Policy Transformer + Soft Prompts
-  freeze_vision_encoder: true
+  freeze_vision_encoder: false
   freeze_language_encoder: false
   train_policy_transformer: true
   train_soft_prompts: true
@@ -60,7 +61,7 @@ policy:
   scheduler_decay_lr: 2.5e-6
 
 # --- Training ---
-batch_size: 32
+batch_size: 24
 steps: 2000
 save_freq: 500
 log_freq: 50
