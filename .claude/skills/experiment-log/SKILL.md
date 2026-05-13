@@ -44,8 +44,8 @@ Each experiment entry uses this structure:
 
 | 字段 | 内容 |
 |------|------|
-| **WandB** | [链接](URL) |
-| **模型权重** | [链接](URL) |
+| **WandB** | [run_id](URL) |
+| **模型权重** | [Atticuxz/repo_name](URL) |
 | **模型** | 模型名 + 参数量 |
 | **微调方式** | 全量微调 / LoRA / 冻结 VLM 等 |
 | **配置** | Batch Size X, N steps, LR=..., ... |
@@ -97,8 +97,8 @@ Show the formatted entry and confirm it was added. During this conversation, you
 
 | 字段 | 内容 |
 |------|------|
-| **WandB** | [链接](https://wandb.ai/atticux/xvla_so101/runs/2i9akaxt) |
-| **模型权重** | [链接](https://huggingface.co/Atticuxz/xvla_so101_20260513_0905) |
+| **WandB** | [2i9akaxt](https://wandb.ai/atticux/xvla_so101/runs/2i9akaxt) |
+| **模型权重** | [Atticuxz/xvla_so101_20260513_0905](https://huggingface.co/Atticuxz/xvla_so101_20260513_0905) |
 | **模型** | XVLa 0.9B |
 | **微调方式** | 冻结 VLM，仅微调 action head |
 | **配置** | Batch Size 32, 2000 steps |

@@ -6,8 +6,8 @@
 
 | 字段 | 内容 |
 |------|------|
-| **WandB** | [链接](https://wandb.ai/atticux/xvla_so101/runs/ue4j5esj) |
-| **模型权重** | [链接](https://huggingface.co/Atticuxz/xvla_so101_20260513_0911) |
+| **WandB** | [ue4j5esj](https://wandb.ai/atticux/xvla_so101/runs/ue4j5esj) |
+| **模型权重** | [Atticuxz/xvla_so101_20260513_0911](https://huggingface.co/Atticuxz/xvla_so101_20260513_0911) |
 | **模型** | XVLa 0.9B |
 | **微调方式** | 全量微调 |
 | **配置** | Batch Size 24, 2000 steps |
@@ -22,8 +22,8 @@
 
 | 字段 | 内容 |
 |------|------|
-| **WandB** | [链接](https://wandb.ai/atticux/xvla_so101/runs/2i9akaxt) |
-| **模型权重** | [链接](https://huggingface.co/Atticuxz/xvla_so101_20260513_0905) |
+| **WandB** | [2i9akaxt](https://wandb.ai/atticux/xvla_so101/runs/2i9akaxt) |
+| **模型权重** | [Atticuxz/xvla_so101_20260513_0905](https://huggingface.co/Atticuxz/xvla_so101_20260513_0905) |
 | **模型** | XVLa 0.9B |
 | **微调方式** | 冻结 VLM，仅微调 action head |
 | **配置** | Batch Size 32, 2000 steps |
@@ -37,8 +37,8 @@
 
 | 字段 | 内容 |
 |------|------|
-| **WandB** | [链接](https://wandb.ai/atticux/xvla_so101/runs/4j0w9t5b) |
-| **模型权重** | [链接](https://huggingface.co/Atticuxz/xvla_so101_20260513_0838) |
+| **WandB** | [4j0w9t5b](https://wandb.ai/atticux/xvla_so101/runs/4j0w9t5b) |
+| **模型权重** | [Atticuxz/xvla_so101_20260513_0838](https://huggingface.co/Atticuxz/xvla_so101_20260513_0838) |
 | **模型** | XVLa 0.9B |
 | **微调方式** | 全量微调 |
 | **配置** | Batch Size 16, 2000 steps |
