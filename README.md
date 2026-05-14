@@ -1,64 +1,49 @@
-# SmolVLA + SOARM-101 长时序桌面清理项目
+# RL Token 仿真复现：基于冻结 π0.5 的残差强化学习微调
 
-项目主线是在 **SOARM-101 六自由度机械臂** 上微调 **SmolVLA**，完成“拾取桌面文具 - 放入容器 - 擦拭桌面”的连续长时序任务
+在 **LIBERO 仿真基准**上复现并扩展 Physical Intelligence 的 **RL Token** 方法（原文仅在闭源 π0.6 真机验证）。冻结开源 `lerobot/pi05_libero` 主干，仅训练轻量 RL Token 编码器 + 块级 TD3 actor-critic，目标是在维持 ≥97% 监督微调成功率的前提下，**显著降低任务完成步数 / 提升吞吐率**。
 
-## 演示视频
+完整实验设计见 [`docs/rltoken_plan.md`](docs/rltoken_plan.md)。
 
-<div align="center">
-  <img src="./media/readme/desktop_cleaning_demo.gif" alt="桌面清理演示" width="760">
-</div>
+## 研究问题
 
-## 项目简介
+> 在监督微调基线已经很强（≈97%）的常见操作任务上，RL Token 的**残差编辑**能否显著提升任务执行效率（吞吐率），同时维持高成功率？
 
-桌面场景中随机摆放多支笔、橡皮、一个容器和一块抹布。机械臂需要在一次闭环推理中连续完成：
+## 技术架构
 
-1. 拾取桌面上散落的笔和橡皮
-2. 将物体放入旁边容器
-3. 使用抹布擦拭桌面
+| 模块 | 内容 |
+| --- | --- |
+| 冻结主干 | `lerobot/pi05_libero`（π0.5 在 LIBERO 上的官方 SFT 检查点） |
+| 阶段一（离线） | RL Token 编码器-解码器（256D 信息瓶颈，~5K 步） |
+| 阶段二（在线） | 块级 TD3：actor ~170K 参数、双 Q 评论家、BC 正则 β=0.5、参考动作 50% 丢弃 |
+| 仿真环境 | LIBERO（Spatial / Object / Goal / Libero-10），奖励 = `env.check_success()` 稀疏二值 |
+| 评估指标 | 吞吐率（主）+ 成功率（辅），详见 `docs/rltoken_plan.md` §三、表 1-3 |
 
-这个任务的核心难点不是单步抓取，而是长时序多步骤连续操作。模型需要在物体位置、物体类型、摆放姿态、容器位置变化时，仍然保持稳定的抓取、放置和擦拭策略。
+## 代码组织
 
-## 当前模型路线
+| 路径 | 用途 |
+| --- | --- |
+| `src/lerobot/rltoken/` | RL Token 编码器/解码器、TD3 actor-critic、训练 entry（本项目新增） |
+| `src/lerobot/envs/libero.py` | LIBERO gym 封装（LeRobot 自带，原样复用） |
+| `src/lerobot/rl/{buffer,learner}.py` | replay buffer 与 learner 骨架（复用） |
+| `src/lerobot/policies/pi05/` | π0.5 实现（不动） |
+| `experiments/rltoken_pi05_libero.yaml` | 训练配置 |
+| `docs/rltoken_plan.md` | 实验设计 V2（主线文档） |
+| `docs/paper/` | RL Token / π_RL / π0.5 / π0.6 论文原文 |
+| `docs/archive/so101/` | 前期 SO-101 真机阶段归档（不再维护） |
 
-* 当前对外主线模型是 **SmolVLA**
-* **X-VLA** 已试过，但在这套任务和当前环境配置下暂时无法稳定使用
-* 后续如果 X-VLA 跑通，再重新评估是否切换主线
+## 快速开始
 
-## 硬件与软件
+```bash
+uv sync --extra "pi"                    # 安装 π0.5 依赖
+bash dev.sh eval_baseline               # 跑 pi05_libero 监督微调基线
+bash dev.sh train_token                 # 阶段一：RL Token 表征训练（离线）
+bash dev.sh train_online                # 阶段二：TD3 在线训练
+bash dev.sh eval_throughput --ckpt PATH # 评估吞吐率
+```
 
-| 模块 | 配置 | 说明 |
-| --- | --- | --- |
-| 机械臂 | SOARM-101 / SO-ARM100 系列 | 开源低成本六自由度机械臂 |
-| 视觉系统 | 正面相机 + 腕部相机 | 640x480，30 FPS |
-| 遥操作 | Leader-Follower 主从臂 | 人操作主臂，从臂跟随并记录轨迹 |
-| 训练与实验室推理 | NVIDIA RTX 4090 | 模型微调与本地真机验证 |
-| 部署目标 | Jetson Thor | 现场边缘推理目标平台 |
-| 开发框架 | Hugging Face LeRobot | 数据采集、训练、部署全流程 |
+## 参考
 
-## 数据采集
-
-共采集 **210 条真机遥操作 episodes**。其中约 70% 覆盖核心桌面布局，约 30% 覆盖边缘位置和更困难布局。
-
-每条 episode 同步记录：
-
-* 正面视角与腕部视角视频
-* 六自由度关节状态与动作
-* 语言任务指令
-* 完整的拾取、放置、擦拭轨迹
-
-为提升泛化能力，采集时对以下因素做域随机化：
-
-* 笔和橡皮的位置
-* 物体类型与摆放姿态
-* 容器位置
-* 机械臂初始姿态与操作轨迹
-
-## 当前结果
-
-| 指标 | 当前结果 | 说明 |
-| --- | --- | --- |
-| Pick success | 86.3% | 主要失败来自边缘位置抓取不稳和细长物体姿态偏转 |
-| Place success | 79.1% | 抓取成功后放置基本稳定，少量失败来自容器边缘碰撞 |
-| Wipe success | 73.6% | 能完成主要擦拭轨迹，但对抹布初始姿态较敏感 |
-| Full success | 62.8% | 可连续完成”拾取 - 放入 - 擦拭”的完整闭环流程 |
-| Unseen layout success | 57.4% | 未见布局下仍能完成多数核心动作，但边缘物体和遮挡场景成功率下降 |
+- **原论文**：[`docs/paper/RL Token: Bootstrapping Online RL with Vision-Language-Action Models.md`](docs/paper/RL%20Token:%20Bootstrapping%20Online%20RL%20with%20Vision-Language-Action%20Models.md)
+- **π0.5 原论文**：[`docs/paper/pi_0.5 a Vision-Language-Action Model with Open-World Generalization.md`](docs/paper/pi_0.5%20a%20Vision-Language-Action%20Model%20with%20Open-World%20Generalization.md)
+- **代码参考**：[rlt-openpi](https://github.com/yknxh/rlt-openpi)（plan 主要参考）、[RLinf](https://github.com/) （LIBERO env + OpenPI 集成参考）
+- **上游框架**：[HuggingFace LeRobot](https://huggingface.co/docs/lerobot/index)

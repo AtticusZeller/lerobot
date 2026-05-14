@@ -1,0 +1,30 @@
+# RL Token 训练配置 — 见 docs/rltoken_plan.md
+# 字段对齐 plan §2.4 表格 + §5.2 开发路线图
+
+pretrained_pi05: lerobot/pi05_libero
+
+libero:
+  suite: libero_spatial            # libero_spatial | libero_object | libero_goal | libero_10
+  max_episode_steps: 400
+
+rltoken:
+  z_dim: 256                       # 信息瓶颈维度
+  encoder_hidden: 256
+  decoder_hidden: 256
+
+td3:
+  action_chunk_size: 8             # C ∈ [5,10]，宏动作步长
+  actor_hidden: 256
+  bc_coef: 0.5                     # β：BC 正则系数
+  ref_action_dropout: 0.5
+  gamma: 0.99
+  tau: 0.005                       # 目标网络 Polyak 软更新
+  update_to_data_ratio: 5
+
+training:
+  stage1_steps: 5000               # 阶段一：编码器-解码器
+  stage2_steps: 200000             # 阶段二：在线 TD3
+  warmup_episodes_from_sft: 64     # 用 SFT 演示预填 replay buffer
+
+wandb:
+  project: rltoken-pi05-libero

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LeRobot is a HuggingFace library for state-of-the-art machine learning for real-world robotics in PyTorch. It provides tools for data collection, training, and deployment of robot policies.
 
-This fork's root `README.md` is now a human-facing Chinese project page for the SO-101 desktop-cleaning task, not a general LeRobot library overview. Keep the external-facing README aligned to the current **SmolVLA** mainline narrative; **X-VLA** remains a documented reference/experimental path and should not replace the README wording unless the user explicitly confirms the switch.
+This fork's root `README.md` is now a human-facing Chinese project page for **RL Token 仿真复现**（冻结 π0.5 + LIBERO 仿真 + 块级 TD3）。前期的 SO-101 真机阶段（SmolVLA / X-VLA / π0.5 桌面清理任务）已**归档到 `docs/archive/so101/`、`experiments/archive/so101/`、`media/archive/so101/`**，不再维护。主线设计文档是 `docs/rltoken_plan.md`，相关论文原文在 `docs/paper/`。
 
 ## Commands
 
@@ -136,18 +136,17 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 `docs/` 下部分文件属于项目维护者的个人文档系统：
 
-* `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护
+* `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护，不要修改
 * `docs/README.md` — 官方文档站入口
-* `docs/so101_pipeline.md` — **主文档**，SO-ARM101 微调完整 Pipeline（通用），模型子文档：`so101_pi05.md` / `so101_smolvla.md` / `so101_xvla.md`
-* `docs/plan.md` — 日常开发计划与任务追踪
-* `docs/bug.md` — 开发过程中遇到的 bug 与解决方案记录
-* `docs/eval.md` — 实机评估 SOP（π0.5 评分 rubric）
-* `docs/inference.md` — gRPC 异步推理部署文档
-* `docs/experiments_log.md` — 实验记录（WandB、模型权重、配置、数据集、结果），按日期倒序，配合 `/experiment-log` skill 使用
+* `docs/rltoken_plan.md` — **主线设计文档**（V2），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图
+* `docs/paper/` — 原始论文 markdown：RL Token、π0、π0.5、π0.6、π_RL（实现时优先查阅）
+* `docs/archive/so101/` — 前期 SO-101 真机阶段归档（SmolVLA / X-VLA / π0.5 桌面清理），**不再维护**，仅作历史参考
 
-**协作约定**：被问及 docs/ 下的文档时，优先读 `so101_pipeline.md` / `so101_pi05.md` / `so101_smolvla.md` / `so101_xvla.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md` / `experiments_log.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+**协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
 
 ## References
 
-* Seeed Studio LeRobot SO-ARM101 文档: https://wiki.seeedstudio.com/lerobot_so100m_new/#train-and-evaluate
+* RL Token 原论文: `docs/paper/RL Token: Bootstrapping Online RL with Vision-Language-Action Models.md`
+* π0.5 原论文: `docs/paper/pi_0.5 a Vision-Language-Action Model with Open-World Generalization.md`
+* 代码参考: [rlt-openpi](https://github.com/yknxh/rlt-openpi)（主要参考）、`~/DevSpace/RLinf/`（LIBERO env + OpenPI 集成参考）
 * HuggingFace LeRobot 官方文档: https://huggingface.co/docs/lerobot/index
