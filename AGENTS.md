@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 LeRobot is a HuggingFace library for state-of-the-art machine learning for real-world robotics in PyTorch. It provides tools for data collection, training, and deployment of robot policies.
 
+This fork's root `README.md` is now a human-facing Chinese project page for the SO-101 desktop-cleaning task, not a general LeRobot library overview. Keep the external-facing README aligned to the current **SmolVLA** mainline narrative; **X-VLA** remains a documented reference/experimental path and should not replace the README wording unless the user explicitly confirms the switch.
+
 ## Commands
 
 ### Installation
