@@ -5,7 +5,10 @@
 ## 演示视频
 
 <div align="center">
-  <video src="./media/readme/desktop_cleaning_demo.mp4" controls playsinline width="760"></video>
+  <a href="./media/readme/desktop_cleaning_demo.mp4">
+    <img src="./media/readme/desktop_cleaning_thumbnail.jpg" alt="桌面清理演示视频" width="760">
+  </a>
+  <p><em>点击封面播放演示视频</em></p>
 </div>
 
 ## 项目简介
