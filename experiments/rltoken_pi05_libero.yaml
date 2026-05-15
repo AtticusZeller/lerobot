@@ -12,6 +12,18 @@ rltoken:
   encoder_hidden: 256
   decoder_hidden: 256
 
+dataset:                           # 阶段二a 离线训练演示数据
+  repo_id: lerobot/libero          # HF Hub LeRobot 格式 LIBERO 数据集
+  batch_size: 4
+  num_workers: 4
+
+stage1:                            # 阶段二a 优化超参
+  learning_rate: 3.0e-4
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_every: 50
+  ckpt_every: 1000
+
 td3:
   action_chunk_size: 8             # C ∈ [5,10]，宏动作步长
   actor_hidden: 256
