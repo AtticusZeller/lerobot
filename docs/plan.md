@@ -4,6 +4,18 @@
 
 ---
 
+## 2026-05-15 Daily Sync
+
+### Completed Today
+
+- [x] **SmolVLA 训练配置优化**
+  - 为 `experiments/smolvla_so101_table_cleanup.yaml` 补充图像数据增强 (`image_transforms.enable=true`, `random_order=true`)。
+  - 将 `n_obs_steps` 配置为 `4`，增强基于历史观测的时间平滑性。
+  - 同步更新了 `docs/so101_smolvla.md` 关键参数文档，以及 `docs/experiments_log.md`。
+  - 由于考虑到兼容性，取消了对 `dev.sh` 的硬编码修改，继续通过 YAML 驱动参数覆盖。
+
+---
+
 ## 2026-04-12 Daily Sync
 
 ### Completed Today

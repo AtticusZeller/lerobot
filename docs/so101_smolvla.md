@@ -120,6 +120,8 @@ YAML 配置文件位于 `experiments/smolvla_so101_table_cleanup.yaml` ，详见
 | `policy.train_expert_only` | `true` | 仅训练 Action Expert |
 | `policy.freeze_vision_encoder` | `true` | 冻结视觉编码器 |
 | `policy.train_state_proj` | `true` | 训练 state 投影层 |
+| `policy.n_obs_steps` | `1` | 观测步数，设置为 `4` 可以增强时间平滑性 |
+| `dataset.image_transforms.enable` | `false` | 启用数据增强（建议为 `true` 并加上 `random_order=true`） |
 
 ### 优化器/调度器预设
 

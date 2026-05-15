@@ -1,5 +1,16 @@
 # 实验记录 (Experiments Log)
 
+## 2026-05-15
+
+### 实验配置变更 — SmolVLA 数据增强与时间平滑性测试
+
+| 字段 | 内容 |
+|------|------|
+| **变更模块** | SmolVLA SO101 训练配置 |
+| **变更文件** | `experiments/smolvla_so101_table_cleanup.yaml` |
+| **详细配置** | `dataset.image_transforms.enable=true`, `dataset.image_transforms.random_order=true`, `policy.n_obs_steps=4` |
+| **预期效果** | 引入数据增强提高鲁棒性，设置 `n_obs_steps=4` 增强观测时间维度的平滑性。 |
+
 ## 2026-05-13
 
 ### 实验 #3 — XVLa SO101 全量微调 bs24

@@ -13,7 +13,10 @@
 
 # --- Dataset ---
 dataset:
-  repo_id: Atticuxz/so101-table-cleanup
+  repo_id: Atticuxz/so101-table-cleanup-min
+  image_transforms:
+    enable: true
+    random_order: true
 
 # --- Policy ---
 policy:
@@ -27,6 +30,7 @@ policy:
   # 来源: src/lerobot/policies/smolvla/configuration_smolvla.py 与 pre-trained config.json
   chunk_size: 50
   n_action_steps: 50
+  n_obs_steps: 4
   resize_imgs_with_padding: [512, 512]
   normalization_mapping:
     VISUAL: IDENTITY
@@ -48,7 +52,7 @@ policy:
 
 # --- Training ---
 batch_size: 32 # SmolVLA 轻量，可开大 batch；显存不够降至 32/16
-steps: 8000 # 官方推荐起点；数据量标准(~50 episodes)用 15k~20k
+steps: 20000 # 官方推荐起点；数据量标准(~50 episodes)用 15k~20k
 save_freq: 2000 # 每 2000 步保存 checkpoint
 log_freq: 50
 eval_freq: 0 # SO-ARM101 无仿真环境，关闭评估
