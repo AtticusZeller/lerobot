@@ -2,6 +2,21 @@
 
 ## 2026-05-15
 
+### 实验 #4 — SmolVLA SO101 冻结VLM 数据增强
+
+| 字段 | 内容 |
+|------|------|
+| **WandB** | [5tma3wrj](https://wandb.ai/atticux/smolvla_so101/runs/5tma3wrj) |
+| **模型权重** | [Atticuxz/smolvla_so101_20260515_0913](https://huggingface.co/Atticuxz/smolvla_so101_20260515_0913) |
+| **模型** | SmolVLA lerobot/smolvla_base 0.5B |
+| **微调方式** | 冻结 VLM，仅微调 action head |
+| **配置** | 20k steps，启用数据增强，n_obs_steps=4 |
+| **数据集描述** | 节奏比之前更慢，视角更清晰，边界内随机摆放，有回程，手动结束录制，idle 帧时间比之前短 |
+| **训练时长** | ~3 小时 |
+| **训练结果** | loss 稳定在 0.05-0.1 |
+| **验证效果** | — |
+| **失败原因分析** | #1-#3 主因：预训练数据集中无 SO-ARM101；次因：对模型结构不够了解无法定位错误；训练步长可能偏短（损失稳定后需再跑 1-20k step 再取 checkpoint） |
+
 ### 实验配置变更 — SmolVLA 数据增强与时间平滑性测试
 
 | 字段 | 内容 |
