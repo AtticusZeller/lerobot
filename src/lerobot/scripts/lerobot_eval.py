@@ -151,6 +151,9 @@ def rollout(
     step = 0
     # Keep track of which environments are done.
     done = np.array([False] * env.num_envs)
+    # Per-env step index at which `done` first became True (-1 = not yet done).
+    # Used for throughput / step-distribution metrics; see docs/rltoken_plan.md §3.1.
+    episode_lengths = np.full(env.num_envs, -1, dtype=np.int64)
     max_steps = env.call("_max_episode_steps")[0]
     progbar = trange(
         max_steps,
@@ -222,6 +225,9 @@ def rollout(
         if step + 1 == max_steps:
             done = np.ones_like(done, dtype=bool)
 
+        just_done = done & (episode_lengths == -1)
+        episode_lengths[just_done] = step + 1
+
         all_actions.append(torch.from_numpy(action_numpy))
         all_rewards.append(torch.from_numpy(reward))
         all_dones.append(torch.from_numpy(done))
@@ -239,12 +245,17 @@ def rollout(
         observation = preprocess_observation(observation)
         all_observations.append(deepcopy(observation))
 
+    # Any env that never terminated falls back to max_steps (shouldn't happen since we force done at
+    # max_steps above, but guard against it).
+    episode_lengths = np.where(episode_lengths == -1, max_steps, episode_lengths)
+
     # Stack the sequence along the first dimension so that we have (batch, sequence, *) tensors.
     ret = {
         ACTION: torch.stack(all_actions, dim=1),
         "reward": torch.stack(all_rewards, dim=1),
         "success": torch.stack(all_successes, dim=1),
         "done": torch.stack(all_dones, dim=1),
+        "episode_length": torch.from_numpy(episode_lengths),
     }
     if return_observations:
         stacked_observations = {}
@@ -311,6 +322,7 @@ def eval_policy(
     sum_rewards = []
     max_rewards = []
     all_successes = []
+    all_episode_lengths: list[int] = []
     all_seeds = []
     threads = []  # for video saving threads
     n_episodes_rendered = 0  # for saving the correct number of videos
@@ -376,6 +388,7 @@ def eval_policy(
         max_rewards.extend(batch_max_rewards.tolist())
         batch_successes = einops.reduce((rollout_data["success"] * mask), "b n -> b", "any")
         all_successes.extend(batch_successes.tolist())
+        all_episode_lengths.extend(rollout_data["episode_length"].tolist())
         if seeds:
             all_seeds.extend(seeds)
         else:
@@ -432,6 +445,14 @@ def eval_policy(
         thread.join()
 
     # Compile eval info.
+    successes_arr = np.asarray(all_successes[:n_episodes], dtype=bool)
+    lengths_arr = np.asarray(all_episode_lengths[:n_episodes], dtype=np.int64)
+    total_env_steps = int(lengths_arr.sum()) if lengths_arr.size else 0
+    successful_lengths = lengths_arr[successes_arr] if successes_arr.any() else np.array([], dtype=np.int64)
+
+    def _percentile_or_nan(arr: np.ndarray, q: float) -> float:
+        return float(np.percentile(arr, q)) if arr.size else float("nan")
+
     info = {
         "per_episode": [
             {
@@ -439,13 +460,15 @@ def eval_policy(
                 "sum_reward": sum_reward,
                 "max_reward": max_reward,
                 "success": success,
+                "episode_length": episode_length,
                 "seed": seed,
             }
-            for i, (sum_reward, max_reward, success, seed) in enumerate(
+            for i, (sum_reward, max_reward, success, episode_length, seed) in enumerate(
                 zip(
                     sum_rewards[:n_episodes],
                     max_rewards[:n_episodes],
                     all_successes[:n_episodes],
+                    all_episode_lengths[:n_episodes],
                     all_seeds[:n_episodes],
                     strict=True,
                 )
@@ -455,6 +478,20 @@ def eval_policy(
             "avg_sum_reward": float(np.nanmean(sum_rewards[:n_episodes])),
             "avg_max_reward": float(np.nanmean(max_rewards[:n_episodes])),
             "pc_success": float(np.nanmean(all_successes[:n_episodes]) * 100),
+            "avg_episode_length": float(np.nanmean(lengths_arr)) if lengths_arr.size else float("nan"),
+            "avg_success_length": (
+                float(np.nanmean(successful_lengths)) if successful_lengths.size else float("nan")
+            ),
+            "p25_episode_length": _percentile_or_nan(lengths_arr, 25),
+            "p50_episode_length": _percentile_or_nan(lengths_arr, 50),
+            "p75_episode_length": _percentile_or_nan(lengths_arr, 75),
+            # Throughput = successes per 1000 env steps (the primary metric, see plan §3.1).
+            "throughput": (
+                float(int(successes_arr.sum()) / total_env_steps * 1000.0)
+                if total_env_steps
+                else float("nan")
+            ),
+            "total_env_steps": total_env_steps,
             "eval_s": time.time() - start,
             "eval_ep_s": (time.time() - start) / n_episodes,
         },
@@ -596,10 +633,11 @@ class TaskMetrics(TypedDict):
     sum_rewards: list[float]
     max_rewards: list[float]
     successes: list[bool]
+    episode_lengths: list[int]
     video_paths: list[str]
 
 
-ACC_KEYS = ("sum_rewards", "max_rewards", "successes", "video_paths")
+ACC_KEYS = ("sum_rewards", "max_rewards", "successes", "episode_lengths", "video_paths")
 
 
 def eval_one(
@@ -639,6 +677,7 @@ def eval_one(
         sum_rewards=[ep["sum_reward"] for ep in per_episode],
         max_rewards=[ep["max_reward"] for ep in per_episode],
         successes=[ep["success"] for ep in per_episode],
+        episode_lengths=[ep["episode_length"] for ep in per_episode],
         video_paths=task_result.get("video_paths", []),
     )
 
@@ -739,6 +778,7 @@ def eval_policy_all(
         _append("sum_rewards", metrics.get("sum_rewards"))
         _append("max_rewards", metrics.get("max_rewards"))
         _append("successes", metrics.get("successes"))
+        _append("episode_lengths", metrics.get("episode_lengths"))
         # video_paths is list-like
         paths = metrics.get("video_paths", [])
         if paths:
@@ -802,6 +842,34 @@ def eval_policy_all(
         arr = np.array(xs, dtype=float)
         return float(np.nanmean(arr))
 
+    def _length_stats(successes: list, lengths: list) -> dict[str, float]:
+        if not lengths:
+            return {
+                "avg_episode_length": float("nan"),
+                "avg_success_length": float("nan"),
+                "p25_episode_length": float("nan"),
+                "p50_episode_length": float("nan"),
+                "p75_episode_length": float("nan"),
+                "throughput": float("nan"),
+                "total_env_steps": 0,
+            }
+        succ_arr = np.asarray(successes, dtype=bool)
+        len_arr = np.asarray(lengths, dtype=np.int64)
+        total_steps = int(len_arr.sum())
+        succ_lengths = len_arr[succ_arr] if succ_arr.any() else np.array([], dtype=np.int64)
+        return {
+            "avg_episode_length": float(np.nanmean(len_arr)),
+            "avg_success_length": (float(np.nanmean(succ_lengths)) if succ_lengths.size else float("nan")),
+            "p25_episode_length": float(np.percentile(len_arr, 25)),
+            "p50_episode_length": float(np.percentile(len_arr, 50)),
+            "p75_episode_length": float(np.percentile(len_arr, 75)),
+            # successes per 1000 env steps; see docs/rltoken_plan.md §3.1.
+            "throughput": (
+                float(int(succ_arr.sum()) / total_steps * 1000.0) if total_steps else float("nan")
+            ),
+            "total_env_steps": total_steps,
+        }
+
     # compute per-group aggregates
     groups_aggregated = {}
     for group, acc in group_acc.items():
@@ -810,6 +878,7 @@ def eval_policy_all(
             "avg_max_reward": _agg_from_list(acc["max_rewards"]),
             "pc_success": _agg_from_list(acc["successes"]) * 100 if acc["successes"] else float("nan"),
             "n_episodes": len(acc["sum_rewards"]),
+            **_length_stats(acc["successes"], acc["episode_lengths"]),
             "video_paths": list(acc["video_paths"]),
         }
 
@@ -819,6 +888,7 @@ def eval_policy_all(
         "avg_max_reward": _agg_from_list(overall["max_rewards"]),
         "pc_success": _agg_from_list(overall["successes"]) * 100 if overall["successes"] else float("nan"),
         "n_episodes": len(overall["sum_rewards"]),
+        **_length_stats(overall["successes"], overall["episode_lengths"]),
         "eval_s": time.time() - start_t,
         "eval_ep_s": (time.time() - start_t) / max(1, len(overall["sum_rewards"])),
         "video_paths": list(overall["video_paths"]),
