@@ -13,7 +13,7 @@
 | 模块 | 内容 |
 | --- | --- |
 | 冻结主干 | `lerobot/pi05_libero`（π0.5 在 LIBERO 上的官方 SFT 检查点） |
-| 阶段一（离线） | RL Token 编码器-解码器（256D 信息瓶颈，~5K 步） |
+| 阶段一（离线） | RL Token 编码器-解码器（2048D，per-task，~5K 步） |
 | 阶段二（在线） | 块级 TD3：actor ~170K 参数、双 Q 评论家、BC 正则 β=0.5、参考动作 50% 丢弃 |
 | 仿真环境 | LIBERO（Spatial / Object / Goal / Libero-10），奖励 = `env.check_success()` 稀疏二值 |
 | 评估指标 | 吞吐率（主）+ 成功率（辅），详见 `docs/rltoken_plan.md` §三、表 1-3 |
@@ -24,10 +24,10 @@
 | --- | --- |
 | `src/lerobot/rltoken/` | RL Token 编码器/解码器、TD3 actor-critic、训练 entry（本项目新增） |
 | `src/lerobot/envs/libero.py` | LIBERO gym 封装（LeRobot 自带，原样复用） |
-| `src/lerobot/rl/{buffer,learner}.py` | replay buffer 与 learner 骨架（复用） |
 | `src/lerobot/policies/pi05/` | π0.5 实现（不动） |
 | `experiments/rltoken_pi05_libero.yaml` | 训练配置 |
-| `docs/rltoken_plan.md` | 实验设计 V2（主线文档） |
+| `docs/rltoken_plan.md` | 实验设计 V3（主线文档） |
+| `plan_user.md` | 单任务 Stage 1/2 用户运行清单 |
 | `docs/paper/` | RL Token / π_RL / π0.5 / π0.6 论文原文 |
 | `docs/archive/so101/` | 前期 SO-101 真机阶段归档（不再维护） |
 
@@ -35,9 +35,9 @@
 
 ```bash
 uv sync --extra "pi"                    # 安装 π0.5 依赖
-bash dev.sh eval_baseline               # 跑 pi05_libero 监督微调基线
-bash dev.sh train_token                 # 阶段一：RL Token 表征训练（离线）
-bash dev.sh train_online                # 阶段二：TD3 在线训练
+LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline --env.task_ids='[0]'
+LIBERO_SUITE=libero_spatial bash dev.sh train_token --dataset.task_index=0 --steps=5000
+LIBERO_SUITE=libero_spatial bash dev.sh train_online --task_index=0 --rl_token_checkpoint PATH
 bash dev.sh eval_throughput --ckpt PATH # 评估吞吐率
 ```
 

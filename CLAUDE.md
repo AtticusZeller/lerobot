@@ -162,8 +162,9 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 * `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护，不要修改
 * `docs/README.md` — 官方文档站入口
-* `docs/rltoken_plan.md` — **主线设计文档**（V2），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图（冻结，不追加历史）
+* `docs/rltoken_plan.md` — **主线设计文档**（V3），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图（冻结，不追加历史）
 * `docs/plan.md` — **执行日志**，记录每个里程碑实际产出 / 命令 / 路径 / 待办；增量更新
+* `plan_user.md` — **用户运行清单**，记录单任务 Stage 1/2 验证命令、期望产物和排障顺序
 * `docs/paper/` — 原始论文 markdown：RL Token、π0、π0.5、π0.6、π_RL（实现时优先查阅）
 * `docs/archive/so101/` — 前期 SO-101 真机阶段归档（SmolVLA / X-VLA / π0.5 桌面清理），**不再维护**，仅作历史参考
 
@@ -173,8 +174,8 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 为了在用户验证某阶段的同时不阻塞下一阶段编码，本项目采用 **git worktree + 多分支并行** 模式。当前活跃分支：
 
-* `rltoken` (主) — 阶段一 + 阶段二a（基线 eval + RL Token 编码器训练）。**用户正在验证；未确认前不要改其已 commit 的算法文件**：`src/lerobot/scripts/lerobot_eval.py`、`src/lerobot/rltoken/{eval_throughput,train_token,rl_token}.py`、`experiments/rltoken_pi05_libero.yaml`、`docs/plan.md`。发现 bug 留 `# TODO(reconcile): ...` 注释，不要直接改。
-* `rltoken_p2` (副) — 阶段二b + 二c 代码骨架（块级 env wrapper + 块级 TD3）。在 `../lerobot-rltoken_p2/` 副工作树下。新代码全部落 `src/lerobot/rltoken/` 下的新文件。可本地 commit，不 push。
+* `rltoken` (主) — 基线 eval、Stage 1 RL Token 训练、Stage 2 块级 TD3 核心代码均已在 `src/lerobot/rltoken/`。当前重点是按 `plan_user.md` 跑通 LIBERO-Spatial task 0；用户验证前避免继续扩展新功能。
+* `rltoken_p2` (副) — 历史副工作树分支；Stage 2 核心已迁回主分支后，不再作为新功能默认落点。
 
 **Workflow 模式**（这是项目级的 Claude Code 协作约定，不仅限于 RL Token 阶段）：
 

@@ -1,14 +1,14 @@
 # RL Token 仿真复现 — 执行日志
 
-主线设计见 [`docs/rltoken_plan.md`](rltoken_plan.md)（V2）。本文档记录每个里程碑的实际产出、命令、关键路径、待办；区别于设计文档，本文档随实施增量更新。
+主线设计见 [`docs/rltoken_plan.md`](rltoken_plan.md)（V3）。本文档记录每个里程碑的实际产出、命令、关键路径、待办；区别于设计文档，本文档随实施增量更新。
 
 ## 当前进度
 
 - [x] 阶段零：repo 脚手架（`rltoken` 分支 commits `b4e05f8e` + `8d7151f9`）
 - [ ] 阶段一：SFT 基线 + 吞吐率基准线（代码已就绪，待跑数据）
-- [ ] 阶段二a：RL Token 编码器-解码器离线训练（代码已就绪，待训练）
-- [ ] 阶段二b：LIBERO env 适配（块级奖励累加 + 演示预填 replay）
-- [ ] 阶段二c：块级 TD3 在线训练 + 评估
+- [ ] 阶段二a：RL Token 编码器-解码器离线训练（代码已就绪，待 task 0 训练）
+- [x] 阶段二b：LIBERO env 适配（块级奖励累加 + VLA-only warmup replay）
+- [x] 阶段二c：块级 TD3 在线训练代码迁移（待 task 0 smoke / 正式训练验证）
 
 ---
 
@@ -113,6 +113,7 @@ done
 ## 参考
 
 - 主线设计：[`docs/rltoken_plan.md`](rltoken_plan.md)
+- 用户运行清单：[`plan_user.md`](../plan_user.md)
 - 原论文：[`docs/paper/RL Token: Bootstrapping Online RL with Vision-Language-Action Models.md`](paper/)
 - π0.5 原论文：[`docs/paper/pi_0.5 a Vision-Language-Action Model with Open-World Generalization.md`](paper/)
 - 代码参考：[rlt-openpi](https://github.com/yknxh/rlt-openpi)（主参考）、`~/DevSpace/RLinf/`（LIBERO env + OpenPI 集成参考）
