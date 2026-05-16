@@ -132,6 +132,30 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 * **Line length**: 110 characters (ruff).
 * **Python**: ≥3.12 required; use `pyupgrade --py312-plus` conventions (e.g.,  `X | Y` union types).
 
+## Python / Deep Learning Code Style
+
+### Comments
+- Tensor ops: annotate shape inline as `# [B, T, C] -> [B, T, num_heads, head_dim]`
+- Use `[B, C, H, W]` notation. B=batch, T=time/sequence, C=channels.
+- Comment the WHY of design choices (loss function selection, freezing strategy),
+  not the WHAT (don't restate code in English).
+- No boilerplate comments like `# forward pass`, `# import libraries`.
+
+### Docstrings
+- Google style. Include tensor shapes in Args/Returns.
+- Training scripts and one-off experiments: minimal docstrings, focus on inline comments.
+- Reusable modules (model definitions, dataset classes): full docstrings.
+
+### Naming
+- Models/modules: PascalCase (`FlowMatchingHead`, `SO101Dataset`)
+- Config keys: snake_case, match HuggingFace / LeRobot conventions
+- Dimensions: spell out in variable names when ambiguous (`action_dim`, `num_heads`)
+
+### Structure
+- One model per file. Dataset class colocated with its transform logic.
+- Training script: config at top as dataclass or dict, not scattered magic numbers.
+- Wandb logging: group related metrics (`loss/flow`, `loss/total`, `lr/schedule`)
+
 ## Docs
 
 `docs/` 下部分文件属于项目维护者的个人文档系统：
