@@ -138,11 +138,37 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 * `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护，不要修改
 * `docs/README.md` — 官方文档站入口
-* `docs/rltoken_plan.md` — **主线设计文档**（V2），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图
+* `docs/rltoken_plan.md` — **主线设计文档**（V2），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图（冻结，不追加历史）
+* `docs/plan.md` — **执行日志**，记录每个里程碑实际产出 / 命令 / 路径 / 待办；增量更新
 * `docs/paper/` — 原始论文 markdown：RL Token、π0、π0.5、π0.6、π_RL（实现时优先查阅）
 * `docs/archive/so101/` — 前期 SO-101 真机阶段归档（SmolVLA / X-VLA / π0.5 桌面清理），**不再维护**，仅作历史参考
 
-**协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+**协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文，进度问题读 `plan.md`。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+
+## RL Token 多分支工作流（并行设计 → 单独细查 → 精修 → 合并）
+
+为了在用户验证某阶段的同时不阻塞下一阶段编码，本项目采用 **git worktree + 多分支并行** 模式。当前活跃分支：
+
+* `rltoken` (主) — 阶段一 + 阶段二a（基线 eval + RL Token 编码器训练）。**用户正在验证；未确认前不要改其已 commit 的算法文件**：`src/lerobot/scripts/lerobot_eval.py`、`src/lerobot/rltoken/{eval_throughput,train_token,rl_token}.py`、`experiments/rltoken_pi05_libero.yaml`、`docs/plan.md`。发现 bug 留 `# TODO(reconcile): ...` 注释，不要直接改。
+* `rltoken_p2` (副) — 阶段二b + 二c 代码骨架（块级 env wrapper + 块级 TD3）。在 `../lerobot-rltoken_p2/` 副工作树下。新代码全部落 `src/lerobot/rltoken/` 下的新文件。可本地 commit，不 push。
+
+**Workflow 模式**（这是项目级的 Claude Code 协作约定，不仅限于 RL Token 阶段）：
+
+1. **分开设计**：用户验证阶段 N 时，新 worktree 上写阶段 N+1 骨架（仅新增文件、不动已 commit 文件）
+2. **逐个细查**：阶段 N 验证后用户可能改 N 的实现；副分支用 `TODO(reconcile):` 标记需要回头同步的位置
+3. **精修各自**：两边稳定后各自再精修（性能、文档、测试覆盖）
+4. **最终合并**：`git merge --no-ff <副分支>` 回主，冲突通常仅在 `docs/plan.md`（人工合并进度状态）
+5. **清理 worktree**：`git worktree remove ../lerobot-<副分支>` + `git branch -d <副分支>`
+
+**新建副 worktree 的命令模板**：
+
+```bash
+git worktree add -b <副分支名> ../lerobot-<副分支名> <主分支 HEAD SHA>
+cd ../lerobot-<副分支名>
+# 此后所有编辑都在新工作树绝对路径下进行
+```
+
+**接手已有副 worktree 时必做**：先 `git worktree list` 看现有 worktree；再各自 `git log --oneline -5` 对齐两边 HEAD；最后读两边 `docs/plan.md` 的差异（`diff <主>/docs/plan.md <副>/docs/plan.md`）。
 
 ## References
 
