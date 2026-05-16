@@ -150,7 +150,7 @@ $\beta = 0.5$，约束演员网络不偏离 VLA 先验太远。
 ### 3.1 主要指标：吞吐率
 
 - **平均完成步数**：成功回合从开始到 `check_success()=True` 的平均步数
-- **吞吐率**：$\text{Throughput} = \frac{\text{成功回合数}}{\text{总步数预算}} \times \text{归一化常数}$
+- **吞吐率**：$\text{Throughput} = \frac{\text{成功回合数}}{\text{总环境步数}} \times 1000$（单位：successes / 1000 env steps；LIBERO 实现取归一化常数 = 1000，见 `lerobot_eval.py`）
 - **步数分布**：成功回合步数的中位数、P25、P75
 
 ### 3.2 辅助指标：成功率
