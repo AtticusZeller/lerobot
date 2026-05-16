@@ -40,7 +40,7 @@ DEFAULT_SUITES: tuple[str, ...] = (
 
 @dataclass
 class ThroughputEvalConfig:
-    policy_path: str = "lerobot/pi05_libero"
+    policy_path: str = "lerobot/pi05_libero_finetuned"
     suites: list[str] = field(default_factory=lambda: list(DEFAULT_SUITES))
     n_episodes: int = 50
     batch_size: int = 5

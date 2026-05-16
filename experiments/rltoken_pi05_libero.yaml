@@ -1,6 +1,6 @@
 # RL Token + π0.5 LIBERO simulation config.
 
-pretrained_pi05: lerobot/pi05_libero
+pretrained_pi05: lerobot/pi05_libero_finetuned
 
 libero:
   suite: libero_spatial

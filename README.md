@@ -1,6 +1,6 @@
 # RL Token 仿真复现：基于冻结 π0.5 的残差强化学习微调
 
-在 **LIBERO 仿真基准**上复现并扩展 Physical Intelligence 的 **RL Token** 方法（原文仅在闭源 π0.6 真机验证）。冻结开源 `lerobot/pi05_libero` 主干，仅训练轻量 RL Token 编码器 + 块级 TD3 actor-critic，目标是在维持 ≥97% 监督微调成功率的前提下，**显著降低任务完成步数 / 提升吞吐率**。
+在 **LIBERO 仿真基准**上复现并扩展 Physical Intelligence 的 **RL Token** 方法（原文仅在闭源 π0.6 真机验证）。冻结开源 `lerobot/pi05_libero_finetuned` 主干，仅训练轻量 RL Token 编码器 + 块级 TD3 actor-critic，目标是在维持 ≥97% 监督微调成功率的前提下，**显著降低任务完成步数 / 提升吞吐率**。
 
 完整实验设计见 [`docs/rltoken_plan.md`](docs/rltoken_plan.md)。
 
@@ -12,7 +12,7 @@
 
 | 模块 | 内容 |
 | --- | --- |
-| 冻结主干 | `lerobot/pi05_libero`（π0.5 在 LIBERO 上的官方 SFT 检查点） |
+| 冻结主干 | `lerobot/pi05_libero_finetuned`（π0.5 在 LIBERO 上追加 6k steps 微调后的官方 SFT 检查点） |
 | 阶段一（离线） | RL Token 编码器-解码器（2048D，per-task，~5K 步） |
 | 阶段二（在线） | 块级 TD3：actor ~170K 参数、双 Q 评论家、BC 正则 β=0.5、参考动作 50% 丢弃 |
 | 仿真环境 | LIBERO（Spatial / Object / Goal / Libero-10），奖励 = `env.check_success()` 稀疏二值 |
@@ -34,11 +34,28 @@
 ## 快速开始
 
 ```bash
-uv sync --extra "pi"                    # 安装 π0.5 依赖
+# 安装依赖（LIBERO 需要额外 extra；如遇 egl-probe 构建失败见 docs/bug.md）
+CMAKE_POLICY_VERSION_MINIMUM=3.5 uv sync --extra "pi" --extra "libero" --extra "test"
+
 LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline --env.task_ids='[0]'
 LIBERO_SUITE=libero_spatial bash dev.sh train_token --dataset.task_index=0 --steps=5000
 LIBERO_SUITE=libero_spatial bash dev.sh train_online --task_index=0 --rl_token_checkpoint PATH
 bash dev.sh eval_throughput --ckpt PATH # 评估吞吐率
+```
+
+如果在 AutoDL 等机器上希望把 `eval_baseline` 的默认输出写到数据盘，同时保留
+`eval/<日期>/<时间>_<job_name>/` 这一层级，用：
+
+```bash
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
+LIBERO_SUITE=libero_spatial \
+bash dev.sh eval_baseline --env.task_ids='[0]'
+```
+
+此时默认输出形如：
+
+```text
+/root/autodl-tmp/outputs/eval/2026-05-16/12-34-56_libero_pi05/
 ```
 
 ## 参考

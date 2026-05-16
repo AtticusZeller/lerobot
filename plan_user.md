@@ -8,10 +8,11 @@
 
 ```bash
 git branch --show-current
-uv sync --extra "pi" --extra "test"
+# LIBERO 仿真需要 libero extra；egl-probe 在 CMake 4.x 下需要 policy override
+CMAKE_POLICY_VERSION_MINIMUM=3.5 uv sync --extra "pi" --extra "test" --extra "libero"
 ```
 
-如果要跑 LIBERO 仿真，确认本机已有 LIBERO 依赖、MuJoCo/EGL 环境、`lerobot/pi05_libero` 权重访问权限、`lerobot/libero` 数据集缓存或 HuggingFace 网络访问。
+确认本机已有 MuJoCo/EGL 环境、`lerobot/pi05_libero_finetuned` 权重访问权限、`lerobot/libero` 数据集缓存或 HuggingFace 网络访问。如 `egl-probe` 构建失败，详见 `docs/bug.md`。
 
 ## 1. 单任务 SFT baseline
 
@@ -24,6 +25,39 @@ LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline \
 ```
 
 期望：能启动 LIBERO-Spatial task 0，输出成功率、平均步数和吞吐率指标。若这里失败，先修 LIBERO/π0.5 环境，不进入 RL Token 训练。
+
+如果在 AutoDL 上运行，且希望默认输出保留自动日期/时间目录但写到数据盘，使用：
+
+```bash
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
+LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline \
+  --env.task_ids='[0]' \
+  --eval.n_episodes=5
+```
+
+期望输出目录形如：
+
+```text
+/root/autodl-tmp/outputs/eval/<日期>/<时间>_<job_name>/
+```
+
+已验证结果（2026-05-16，`LIBERO_SUITE=libero_spatial`，`task_id=0`，5 episodes）：
+
+- 成功率：`100.0%`（`5/5`）
+- 平均步数：`76.6`
+- 成功回合平均步数：`76.6`
+- 步数分位数：`p25=74`，`p50=77`，`p75=77`
+- 吞吐率：`13.05`（successes / 1000 env steps）
+- 总耗时：`186.5s`
+- 结果目录：`/root/autodl-tmp/outputs/eval/2026-05-16/19-07-03_libero_pi05/`
+
+逐回合明细：
+
+- `successes=[True, True, True, True, True]`
+- `episode_lengths=[77, 74, 74, 77, 81]`
+- `sum_rewards=[1.0, 1.0, 1.0, 1.0, 1.0]`
+
+结论：阶段一 baseline 已通过，可进入 task 0 的 RL Token 训练。
 
 ## 2. 阶段一：训练 task 0 RL Token
 

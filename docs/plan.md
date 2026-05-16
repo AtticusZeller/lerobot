@@ -5,7 +5,7 @@
 ## 当前进度
 
 - [x] 阶段零：repo 脚手架（`rltoken` 分支 commits `b4e05f8e` + `8d7151f9`）
-- [ ] 阶段一：SFT 基线 + 吞吐率基准线（代码已就绪，待跑数据）
+- [x] 阶段一：SFT 基线 + 吞吐率基准线（`2026-05-16` 已验证 `libero_spatial task 0`，5/5 成功）
 - [ ] 阶段二a：RL Token 编码器-解码器离线训练（代码已就绪，待 task 0 训练）
 - [x] 阶段二b：LIBERO env 适配（块级奖励累加 + VLA-only warmup replay）
 - [x] 阶段二c：块级 TD3 在线训练代码迁移（待 task 0 smoke / 正式训练验证）
@@ -16,15 +16,16 @@
 
 ### 设计
 
-冻结 `lerobot/pi05_libero`，在 LIBERO-Spatial / Object / Goal / Libero-10 上跑评估，记录 per-episode 步数 + 成功率，计算吞吐率：
+冻结 `lerobot/pi05_libero_finetuned`，在 LIBERO-Spatial / Object / Goal / Libero-10 上跑评估，记录 per-episode 步数 + 成功率，计算吞吐率：
 
-$$\text{throughput} = \frac{\text{成功回合数}}{\text{总步数预算}} \times 1000$$
+$$\text{throughput} = \frac{\text{成功回合数}}{\text{总 env steps}} \times 1000$$
 
 为 阶段二a/c 改进幅度提供对照基线。
 
 ### 关键改动
 
 - `src/lerobot/scripts/lerobot_eval.py` — `rollout()` 新增 `episode_lengths` 记录（每个 env 首次 `done` 的 step+1），向上传播到 `eval_policy` / `eval_one` / `eval_policy_all`。聚合指标新增 `avg_episode_length` / `p25/p50/p75_episode_length` / `throughput`。
+- `src/lerobot/configs/eval.py` — `eval_baseline` 默认输出根目录支持环境变量 `LEROBOT_OUTPUT_ROOT`；未显式传 `--output_dir` 时输出到 `<输出根>/eval/<日期>/<时间>_<job_name>/`，适配 AutoDL 数据盘。
 - `src/lerobot/rltoken/eval_throughput.py` — 4-suite batch wrapper：调用 `eval_main`，把结果汇总成 `outputs/baseline/libero_throughput.json`，per-suite lengths 写到 `outputs/baseline/<suite>/episode_steps.csv`。
 - `dev.sh` — `eval_baseline` 与 `eval_throughput` 两个入口已就位。
 
@@ -34,23 +35,46 @@ $$\text{throughput} = \frac{\text{成功回合数}}{\text{总步数预算}} \tim
 # 单 suite 烟雾测试
 LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline --eval.n_episodes=5
 
+# AutoDL: 默认输出写入数据盘，同时保留自动日期/时间目录
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
+LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline --eval.n_episodes=5
+
 # 4-suite 全量基线
 bash dev.sh eval_throughput \
-    --policy_path=lerobot/pi05_libero \
+    --policy_path=lerobot/pi05_libero_finetuned \
     --n_episodes=50 \
     --output_dir=outputs/baseline
 ```
 
-### 产出（运行后填）
+### 产出
 
-| Suite           | 成功率 | 平均步数 | P25 / P50 / P75 | 吞吐率 (×1000) |
-| --------------- | ------ | -------- | --------------- | -------------- |
-| libero_spatial  | TBD    | TBD      | TBD / TBD / TBD | TBD            |
+已验证运行（2026-05-16）：
+
+```bash
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
+LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline \
+  --env.task_ids='[0]' \
+  --eval.n_episodes=5
+```
+
+| Suite           | 成功率 | 平均步数 | P25 / P50 / P75 | 吞吐率（successes / 1000 env steps） |
+| --------------- | ------ | -------- | --------------- | ------------------------------------ |
+| libero_spatial  | 100.0% | 76.6     | 74 / 77 / 77    | 13.05                                |
 | libero_object   | TBD    | TBD      | TBD / TBD / TBD | TBD            |
 | libero_goal     | TBD    | TBD      | TBD / TBD / TBD | TBD            |
 | libero_10       | TBD    | TBD      | TBD / TBD / TBD | TBD            |
 
-raw log: `outputs/baseline/<suite>/episode_steps.csv`
+Task 0 逐回合结果：
+
+- `successes=[True, True, True, True, True]`
+- `episode_lengths=[77, 74, 74, 77, 81]`
+- `sum_rewards=[1.0, 1.0, 1.0, 1.0, 1.0]`
+- 输出目录：`/root/autodl-tmp/outputs/eval/2026-05-16/19-07-03_libero_pi05/`
+
+raw log:
+
+- baseline eval videos: `/root/autodl-tmp/outputs/eval/2026-05-16/19-07-03_libero_pi05/videos/libero_spatial_0/`
+- 4-suite wrapper csv: `outputs/baseline/<suite>/episode_steps.csv`
 
 ---
 
@@ -58,7 +82,7 @@ raw log: `outputs/baseline/<suite>/episode_steps.csv`
 
 ### 设计
 
-冻结 `pi05_libero`，提取 VLM 最后一层视觉 hidden state $z^{vis}_{1:M} \in \mathbb{R}^{B \times M \times 2048}$（去除固定语言嵌入），按 LIBERO task 训练独立编码器-解码器：
+冻结 `pi05_libero_finetuned`，提取 VLM 最后一层视觉 hidden state $z^{vis}_{1:M} \in \mathbb{R}^{B \times M \times 2048}$（去除固定语言嵌入），按 LIBERO task 训练独立编码器-解码器：
 
 - 编码器 $E([z^{vis}_{1:M}, e_{rl}]) \to z_{rl} \in \mathbb{R}^{2048}$（rlt-openpi TransformerEncoder，2 层）
 - 解码器 teacher-forced AR：$D(z_{rl}, z^{vis}_{1:M}) \to \hat z^{vis}_{1:M}$（rlt-openpi TransformerDecoder，2 层）

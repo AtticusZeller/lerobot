@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import datetime as dt
+import os
 from dataclasses import dataclass, field
 from logging import getLogger
 from pathlib import Path
@@ -67,7 +68,8 @@ class EvalPipelineConfig:
         if not self.output_dir:
             now = dt.datetime.now()
             eval_dir = f"{now:%Y-%m-%d}/{now:%H-%M-%S}_{self.job_name}"
-            self.output_dir = Path("outputs/eval") / eval_dir
+            output_root = Path(os.environ.get("LEROBOT_OUTPUT_ROOT", "outputs"))
+            self.output_dir = output_root / "eval" / eval_dir
 
     @classmethod
     def __get_path_fields__(cls) -> list[str]:

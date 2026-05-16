@@ -29,7 +29,7 @@ from lerobot.utils.utils import init_logging
 
 @dataclass
 class TrainOnlineConfig(OnlineRLConfig):
-    pretrained: str = "lerobot/pi05_libero"
+    pretrained: str = "lerobot/pi05_libero_finetuned"
     yaml_config: str | None = None
     suite: str = "libero_spatial"
     task_index: int = 0

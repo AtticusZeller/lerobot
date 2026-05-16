@@ -170,6 +170,8 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 **协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文，进度问题读 `plan.md`。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
 
+**输出路径约定**：`eval_baseline` 底层使用 `src/lerobot/configs/eval.py` 的 `EvalPipelineConfig.output_dir`。若未显式传 `--output_dir`，默认输出到 `outputs/eval/<日期>/<时间>_<job_name>/`；可通过环境变量 `LEROBOT_OUTPUT_ROOT` 改写根前缀，例如 AutoDL 上设为 `/root/autodl-tmp/outputs` 后，默认输出变为 `/root/autodl-tmp/outputs/eval/<日期>/<时间>_<job_name>/`。`eval_throughput` 仍使用其自身 `--output_dir` 参数，不读取该环境变量。
+
 ## RL Token 多分支工作流（并行设计 → 单独细查 → 精修 → 合并）
 
 为了在用户验证某阶段的同时不阻塞下一阶段编码，本项目采用 **git worktree + 多分支并行** 模式。当前活跃分支：

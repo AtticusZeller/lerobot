@@ -61,7 +61,7 @@ class Stage1Cfg:
 
 @dataclass
 class TrainTokenConfig:
-    pretrained: str = "lerobot/pi05_libero"
+    pretrained: str = "lerobot/pi05_libero_finetuned"
     output_dir: str = "outputs/rltoken/encoder_decoder"
     yaml_config: str | None = None
     suite: str | None = None
