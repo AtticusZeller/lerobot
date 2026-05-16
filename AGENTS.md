@@ -1,12 +1,12 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents such as Codex and Claude Code when working with code in this repository.
 
 ## Project Overview
 
 LeRobot is a HuggingFace library for state-of-the-art machine learning for real-world robotics in PyTorch. It provides tools for data collection, training, and deployment of robot policies.
 
-This fork's root `README.md` is now a human-facing Chinese project page for the SO-101 desktop-cleaning task, not a general LeRobot library overview. Keep the external-facing README aligned to the current **SmolVLA** mainline narrative; **X-VLA** remains a documented reference/experimental path and should not replace the README wording unless the user explicitly confirms the switch.
+This fork's root `README.md` is now a human-facing Chinese project page for **RL Token 仿真复现**（冻结 π0.5 + LIBERO 仿真 + 块级 TD3）。前期的 SO-101 真机阶段（SmolVLA / X-VLA / π0.5 桌面清理任务）已**归档到 `docs/archive/so101/`、`experiments/archive/so101/`、`media/archive/so101/`**，不再维护。主线设计文档是 `docs/rltoken_plan.md`，相关论文原文在 `docs/paper/`。
 
 ## Commands
 
@@ -79,7 +79,7 @@ lerobot-edit-dataset   # Edit dataset episodes
 
 Configs are dataclasses using [draccus](https://github.com/dlwh/draccus), which parses CLI args into nested dataclasses. Key classes:
 
-* `TrainPipelineConfig` (`configs/train.py`) — top-level training config, composes `DatasetConfig`,  `PreTrainedConfig`,  `OptimizerConfig`, etc.
+* `TrainPipelineConfig` (`configs/train.py`) — top-level training config, composes `DatasetConfig`, `PreTrainedConfig`, `OptimizerConfig`, etc.
 * `PreTrainedConfig` (`configs/policies.py`) — base for all policy configs; uses `draccus.ChoiceRegistry` for dynamic dispatch by policy name. Each policy registers itself with `@PreTrainedConfig.register_subclass("act")` etc.
 * `DatasetConfig` (`configs/default.py`) — dataset repo ID, episodes subset, image transforms, video backend.
 * `configs/parser.py` — draccus-based CLI parser with plugin discovery support.
@@ -88,9 +88,9 @@ Configs are dataclasses using [draccus](https://github.com/dlwh/draccus), which 
 
 All policies inherit from:
 * `PreTrainedConfig` — dataclass config registered in the draccus choice registry
-* `PreTrainedPolicy(nn.Module)` — wraps HuggingFace Hub integration; implements `select_action()`,  `forward()`, and `get_optim_params()`
+* `PreTrainedPolicy(nn.Module)` — wraps HuggingFace Hub integration; implements `select_action()`, `forward()`, and `get_optim_params()`
 
-Available policies: `act` , `diffusion` , `tdmpc` , `vqbet` , `pi0` , `pi05` , `smolvla` , `groot` , `sarm` , `wall_x` , `xvla` , `sac` (RL), `rtc`
+Available policies: `act`, `diffusion`, `tdmpc`, `vqbet`, `pi0`, `pi05`, `smolvla`, `groot`, `sarm`, `wall_x`, `xvla`, `sac` (RL), `rtc`
 
 `policies/factory.py` — `make_policy()` instantiates a policy from config + dataset metadata, wiring input/output features automatically.
 
@@ -106,18 +106,18 @@ Dataset storage layout: `data/chunk-XXX/episode_XXXXXXXX.parquet` for frames, `v
 
 ### Hardware Abstractions
 
-* `motors/` — `MotorsBus` base class with implementations for `dynamixel`,  `feetech`,  `damiao`,  `robstride` motor protocols.
-* `cameras/` — `Camera` base class with `opencv`,  `realsense`,  `zmq`, and `reachy2_camera` backends.
-* `robots/` — `Robot` base class; robot-specific implementations under subdirectories (`koch_follower`,  `lekiwi`,  `so_follower`, etc.).
+* `motors/` — `MotorsBus` base class with implementations for `dynamixel`, `feetech`, `damiao`, `robstride` motor protocols.
+* `cameras/` — `Camera` base class with `opencv`, `realsense`, `zmq`, and `reachy2_camera` backends.
+* `robots/` — `Robot` base class; robot-specific implementations under subdirectories (`koch_follower`, `lekiwi`, `so_follower`, etc.).
 * `teleoperators/` — teleoperation devices.
 
 ### Training Pipeline ( `src/lerobot/scripts/lerobot_train.py` )
 
-Uses HuggingFace `accelerate` for distributed training. Training loop: dataset → `EpisodeAwareSampler` → policy forward → optimizer step → optional eval via `lerobot_eval.py` . Checkpoints saved as safetensors + config JSON.
+Uses HuggingFace `accelerate` for distributed training. Training loop: dataset -> `EpisodeAwareSampler` -> policy forward -> optimizer step -> optional eval via `lerobot_eval.py`. Checkpoints saved as safetensors + config JSON.
 
 ### Async Inference ( `src/lerobot/async_inference/` + `transport/` )
 
-gRPC-based client-server architecture for decoupled policy inference. `transport/` contains protobuf definitions ( `services.proto` ), generated stubs ( `services_pb2*.py` ), and the `PolicyServer` / `RobotClient` pair. Requires `grpcio-dep` extra.
+gRPC-based client-server architecture for decoupled policy inference. `transport/` contains protobuf definitions (`services.proto`), generated stubs (`services_pb2*.py`), and the `PolicyServer` / `RobotClient` pair. Requires `grpcio-dep` extra.
 
 ### Processor Pipeline ( `src/lerobot/processor/` )
 
@@ -125,28 +125,63 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 ## Key Conventions
 
-* **`draccus` CLI pattern**: main scripts use `@parser.wrap()` decorator on `main(cfg: SomeConfig)`. CLI args map directly to config field paths (e.g.,  `--dataset.repo_id=...`).
+* **`draccus` CLI pattern**: main scripts use `@parser.wrap()` decorator on `main(cfg: SomeConfig)`. CLI args map directly to config field paths (e.g., `--dataset.repo_id=...`).
 * **Policy registration**: New policies must register their config with `@PreTrainedConfig.register_subclass("name")` and implement `PreTrainedPolicy`.
-* **Feature types** (`configs/types.py`): `FeatureType.VISUAL`,  `STATE`,  `ACTION`,  `ENV` — used to wire dataset features to policy inputs/outputs.
-* **mypy enforcement**: Only enforced on `envs`,  `configs`,  `optim`,  `model`,  `cameras`,  `motors`,  `transport` modules. Other modules have `ignore_errors = true`.
+* **Feature types** (`configs/types.py`): `FeatureType.VISUAL`, `STATE`, `ACTION`, `ENV` — used to wire dataset features to policy inputs/outputs.
+* **mypy enforcement**: Only enforced on `envs`, `configs`, `optim`, `model`, `cameras`, `motors`, `transport` modules. Other modules have `ignore_errors = true`.
 * **Line length**: 110 characters (ruff).
-* **Python**: ≥3.12 required; use `pyupgrade --py312-plus` conventions (e.g.,  `X | Y` union types).
+* **Python**: >=3.12 required; use `pyupgrade --py312-plus` conventions (e.g., `X | Y` union types).
 
 ## Docs
 
 `docs/` 下部分文件属于项目维护者的个人文档系统：
 
-* `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护
+* `docs/source/` — 官方文档站源码（`.mdx` 文件），由 HuggingFace 官方维护，不要修改
 * `docs/README.md` — 官方文档站入口
-* `docs/so101_pipeline.md` — **主文档**，SO-ARM101 微调完整 Pipeline（通用），模型子文档：`so101_pi05.md` / `so101_smolvla.md` / `so101_xvla.md`
-* `docs/plan.md` — 日常开发计划与任务追踪
-* `docs/bug.md` — 开发过程中遇到的 bug 与解决方案记录
-* `docs/eval.md` — 实机评估 SOP（π0.5 评分 rubric）
-* `docs/inference.md` — gRPC 异步推理部署文档
+* `docs/rltoken_plan.md` — **主线设计文档**（V2），RL Token + π0.5 + LIBERO 仿真复现的完整实验设计、技术架构、开发路线图（冻结，不追加历史）
+* `docs/plan.md` — **执行日志**，记录每个里程碑实际产出 / 命令 / 路径 / 待办；增量更新
+* `docs/paper/` — 原始论文 markdown：RL Token、π0、π0.5、π0.6、π_RL（实现时优先查阅）
+* `docs/archive/so101/` — 前期 SO-101 真机阶段归档（SmolVLA / X-VLA / π0.5 桌面清理），**不再维护**，仅作历史参考
 
-**协作约定**：被问及 docs/ 下的文档时，优先读 `so101_pipeline.md` / `so101_pi05.md` / `so101_smolvla.md` / `so101_xvla.md` / `plan.md` / `bug.md` / `eval.md` / `inference.md`。`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+**协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文，进度问题读 `plan.md`。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
+
+## RL Token 多分支工作流（并行设计 -> 单独细查 -> 精修 -> 合并）
+
+为了在用户验证某阶段的同时不阻塞下一阶段编码，本项目采用 **git worktree + 多分支并行** 模式。当前活跃分支：
+
+* `rltoken` (主) — 阶段一 + 阶段二a（基线 eval + RL Token 编码器训练）。**用户正在验证；未确认前不要改其已 commit 的算法文件**：`src/lerobot/scripts/lerobot_eval.py`、`src/lerobot/rltoken/{eval_throughput,train_token,rl_token}.py`、`experiments/rltoken_pi05_libero.yaml`、`docs/plan.md`。发现 bug 留 `# TODO(reconcile): ...` 注释，不要直接改。
+* `rltoken_p2` (副) — 阶段二b + 二c 代码骨架（块级 env wrapper + 块级 TD3）。在 `../lerobot-rltoken_p2/` 副工作树下。新代码全部落 `src/lerobot/rltoken/` 下的新文件。可本地 commit，不 push。
+
+**Workflow 模式**（这是项目级的 agent 协作约定，不仅限于 RL Token 阶段）：
+
+1. **分开设计**：用户验证阶段 N 时，新 worktree 上写阶段 N+1 骨架（仅新增文件、不动已 commit 文件）
+2. **逐个细查**：阶段 N 验证后用户可能改 N 的实现；副分支用 `TODO(reconcile):` 标记需要回头同步的位置
+3. **精修各自**：两边稳定后各自再精修（性能、文档、测试覆盖）
+4. **最终合并**：`git merge --no-ff <副分支>` 回主，冲突通常仅在 `docs/plan.md`（人工合并进度状态）
+5. **清理 worktree**：`git worktree remove ../lerobot-<副分支>` + `git branch -d <副分支>`
+
+**新建副 worktree 的命令模板**：
+
+```bash
+git worktree add -b <副分支名> ../lerobot-<副分支名> <主分支 HEAD SHA>
+cd ../lerobot-<副分支名>
+# 此后所有编辑都在新工作树绝对路径下进行
+```
+
+**接手已有副 worktree 时必做**：先 `git worktree list` 看现有 worktree；再各自 `git log --oneline -5` 对齐两边 HEAD；最后读两边 `docs/plan.md` 的差异（`diff <主>/docs/plan.md <副>/docs/plan.md`）。
+
+## Project Skills
+
+This repository's project-local skills currently live in `.claude/skills/`:
+* `.claude/skills/bug-journal/`
+* `.claude/skills/experiment-log/`
+* `.claude/skills/sync-upstream/`
+
+Use those skill folders directly when a task matches them. In this workspace, `.codex/` and `.agents/` are mounted read-only tmpfs placeholders, so skill files cannot be mirrored there from inside the repo. If the environment changes and `.codex/skills/` becomes writable, mirror the same three skills there and keep them aligned with `.claude/skills/`.
 
 ## References
 
-* Seeed Studio LeRobot SO-ARM101 文档: https://wiki.seeedstudio.com/lerobot_so100m_new/#train-and-evaluate
+* RL Token 原论文: `docs/paper/RL Token: Bootstrapping Online RL with Vision-Language-Action Models.md`
+* π0.5 原论文: `docs/paper/pi_0.5 a Vision-Language-Action Model with Open-World Generalization.md`
+* 代码参考: [rlt-openpi](https://github.com/yknxh/rlt-openpi)（主要参考）、`~/DevSpace/RLinf/`（LIBERO env + OpenPI 集成参考）
 * HuggingFace LeRobot 官方文档: https://huggingface.co/docs/lerobot/index
