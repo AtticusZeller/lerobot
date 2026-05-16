@@ -7,8 +7,8 @@
 - [x] 阶段零：repo 脚手架（`rltoken` 分支 commits `b4e05f8e` + `8d7151f9`）
 - [ ] 阶段一：SFT 基线 + 吞吐率基准线（代码已就绪，待跑数据）
 - [ ] 阶段二a：RL Token 编码器-解码器离线训练（代码已就绪，待训练）
-- [ ] 阶段二b：LIBERO env 适配（块级奖励累加 + 演示预填 replay）
-- [ ] 阶段二c：块级 TD3 在线训练 + 评估
+- [~] 阶段二b：LIBERO env 块级 wrapper（代码骨架就绪 on `rltoken_p2`）
+- [~] 阶段二c：块级 TD3 在线训练 + 评估（代码骨架就绪 on `rltoken_p2`，端到端 run 待回灌）
 
 ---
 
@@ -92,16 +92,29 @@ bash dev.sh train_token --steps=5000
 
 ---
 
-## 后续阶段 2b / 2c 待办（脚手架缺口）
+## 阶段二b / 二c — 并行实施中（`rltoken_p2` 分支）
 
-按 `docs/rltoken_plan.md` §2.4 + §5.2，2b/2c 需新增/扩展以下模块，本次阶段未触及：
+通过 `git worktree add ../lerobot-rltoken_p2 rltoken_p2`（基于 `rltoken@97f985c8`）开副工作树，与 `rltoken` 上阶段一/二a 的验证并行推进。设计依据 `docs/rltoken_plan.md` §2.4 + §5.2。
 
-- `src/lerobot/rl/buffer.py` —— 扩展 `action_chunk_size` 字段或新写 `ChunkedReplayBuffer`，存储宏动作 transition
-- `src/lerobot/rl/learner.py` —— 现仅 SAC，需新增 TD3：双 Q + Polyak 软更新 + 块级 Bellman 累加 $y = \sum_{i=0}^{C-1} \gamma^i r_{t+i} + \gamma^C \min_j Q'_{\theta_j}(s_{t+C}, a')$
-- `src/lerobot/rl/actor.py` —— 现仅 HILSerl gamepad，需新增 `RLTokenActor`：调用阶段二a checkpoint 抽 `z_rl`，参考动作 50% dropout，残差末层零初始化
-- `src/lerobot/envs/libero.py` —— 加块级 reward 累加 wrapper（C 步聚合一次 transition）；可选去除人类介入接口
-- `src/lerobot/rltoken/train_online.py` —— 当前为 NotImplementedError 占位，需实现 actor-critic 主循环
-- 演示预填脚本 —— 用 HF Hub `lerobot/libero` 演示填充 replay buffer 作为 warmup
+### 已落代码（rltoken_p2 本地 commit）
+
+- [x] `src/lerobot/rltoken/block_env.py` — `ChunkedLiberoEnv`：把 `LiberoEnv` 单步接口折叠为块级接口，一次 step 内执行 C 个 inner step、累加二值成功奖励、提前 break on terminate
+- [x] `src/lerobot/rltoken/td3.py` — `TD3Actor`（残差头零初始化 + ref dropout 0.5）、`TD3Critic`（双 Q）、`soft_update_target`（Polyak τ=0.005）、`td3_critic_loss`（块级 Bellman y = r + (1-done)·γ^C·min_j Q'_j(s_{t+C}, a')）、`td3_actor_loss`（-Q1 + β·BC）
+- [x] `src/lerobot/rltoken/train_online.py` — 替换 NotImplementedError；主循环复用 `ReplayBuffer`（dict state + chunk action）；`--stage2.smoke=True` 走纯 TD3 单元 loop（无 LIBERO / π0.5 依赖）
+- [x] `src/lerobot/rltoken/tests/{test_block_env,test_td3}.py` — 13 个单元 smoke test 全绿（chunk reward 累加、shape、零初始化语义、梯度流、Polyak 中点）
+
+### 复用结论
+
+- `src/lerobot/rl/buffer.py:ReplayBuffer` ✅ 原样复用：dict-typed state、任意 action shape；chunk action 存为 flat tensor `(B, C*A)`，sample 后 view 回 `(B, C, A)`
+- `src/lerobot/rl/{learner,actor}.py` ❌ 不复用：强耦合 gRPC + HILSerl gamepad；标准单进程 main loop 直接写在 `train_online.py` 即可
+- `src/lerobot/policies/sac/modeling_sac.py:CriticEnsemble` 模式借鉴（双 Q），但因耦合 SACObservationEncoder 改为自写
+
+### 回灌后待办（标记为 `# TODO(reconcile):`）
+
+- 演示预填 replay buffer：用 `lerobot/libero` HF 数据集 + 阶段二a 风格 dataloader 填 warmup transitions（避免热启依赖 π0.5 rollout）
+- 把阶段二 ckpt wire 进 `lerobot.rltoken.eval_throughput` 以做 RL Token vs SFT 吞吐率对比
+- 多 task 支持：当前固定 `--stage2.task_id=0`；之后扩展为 task_id 循环 / 并行
+- 完整 10K+ 步端到端 run on LIBERO-Spatial 单 task
 
 ---
 
