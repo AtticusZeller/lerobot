@@ -171,6 +171,16 @@ class _LazyAsyncVectorEnv:
         if self._env is None:
             self._env = gym.vector.AsyncVectorEnv(self._env_fns, context="forkserver", shared_memory=True)
 
+    @property
+    def metadata(self):
+        self._ensure()
+        return self._env.metadata
+
+    @property
+    def unwrapped(self):
+        self._ensure()
+        return self._env.unwrapped
+
     def reset(self, **kwargs):
         self._ensure()
         return self._env.reset(**kwargs)
