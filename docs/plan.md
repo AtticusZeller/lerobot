@@ -58,50 +58,55 @@ raw log: `outputs/baseline/<suite>/episode_steps.csv`
 
 ### 设计
 
-冻结 `pi05_libero`，提取 VLM 最后一层 hidden state $z_{1:M} \in \mathbb{R}^{B \times M \times 2048}$（M ≈ 456），训练轻量编码器-解码器构建信息瓶颈：
+冻结 `pi05_libero`，提取 VLM 最后一层视觉 hidden state $z^{vis}_{1:M} \in \mathbb{R}^{B \times M \times 2048}$（去除固定语言嵌入），按 LIBERO task 训练独立编码器-解码器：
 
-- 编码器 $E(z_{1:M}) \to z_{rl} \in \mathbb{R}^{256}$（CLS-pooling Transformer，2 层）
-- 解码器 $D(z_{rl}) \to \hat z_{1:M}$（learnable queries + cross-attn，2 层）
-- 损失 $L_{ro} = \mathbb{E}\|D(E(z_{1:M})) - \text{sg}(z_{1:M})\|_2^2$
+- 编码器 $E([z^{vis}_{1:M}, e_{rl}]) \to z_{rl} \in \mathbb{R}^{2048}$（rlt-openpi TransformerEncoder，2 层）
+- 解码器 teacher-forced AR：$D(z_{rl}, z^{vis}_{1:M}) \to \hat z^{vis}_{1:M}$（rlt-openpi TransformerDecoder，2 层）
+- 损失 $L_{ro} = \mathbb{E}\|D(E(z^{vis}_{1:M})) - \text{sg}(z^{vis}_{1:M})\|_2^2$
 - 演示数据：HF Hub `lerobot/libero`（LeRobotDataset 加载）
-- 训练步数：5000
+- 训练粒度：per-task，4 suites × 10 tasks = 40 个 ckpt
+- 训练步数：5000 / task
 
 ### 关键改动
 
-- `src/lerobot/rltoken/rl_token.py` — `RLTokenEncoder` / `RLTokenDecoder` / `extract_vlm_embeddings()` helper
-- `src/lerobot/rltoken/datasets.py` — `make_libero_demo_dataloader()` 薄包装
-- `src/lerobot/rltoken/train_token.py` — 5K 步训练循环 entry
-- `experiments/rltoken_pi05_libero.yaml` — 补 `dataset` + `stage1` 节
+- `src/lerobot/rltoken/rl_token.py` — rlt-openpi `RLTokenModel` API + LeRobot π0.5 visual-only embedding helper
+- `src/lerobot/rltoken/train_token.py` — per-task 5K 步 Stage 1 训练循环
+- `src/lerobot/rltoken/{actor,critic,replay_buffer,td3_utils,rollout_worker,online_trainer}.py` — rlt-openpi Stage 2 TD3 核心迁移
+- `src/lerobot/rltoken/{adapter,libero_chunk_env}.py` — LeRobot π0.5 / LIBERO 适配层
+- `experiments/rltoken_pi05_libero.yaml` — V3 超参（`embedding_dim=2048`、batch 32、warmup 500）
 
 ### 命令
 
 ```bash
 # 烟雾测试（20 步）
-bash dev.sh train_token --steps=20
+bash dev.sh train_token --dataset.task_index=0 --steps=20
 
-# 正式 run
-bash dev.sh train_token --steps=5000
+# 单 task 正式 run
+bash dev.sh train_token --dataset.task_index=0 --steps=5000
+
+# LIBERO-Spatial 10 个 task
+for t in 0 1 2 3 4 5 6 7 8 9; do
+  bash dev.sh train_token --dataset.task_index=$t --steps=5000
+done
 ```
 
 ### 产出（运行后填）
 
-- 检查点：`outputs/rltoken/encoder_decoder/step_5000.safetensors`（< 50 MB）
+- 检查点：`outputs/rltoken/encoder_decoder/<suite>/task_<NN>/step_005000.safetensors`
 - 训练曲线：wandb run `rltoken-pi05-libero/<id>`
 - `L_ro` 末段平台值：TBD（参考 rlt-openpi：初始 ~1.0 → 末段 < 0.1）
-- `z_rl` 验证集协方差矩阵秩：TBD（目标 ≈ 256，未塌缩）
+- `z_rl` 验证集协方差矩阵秩：TBD（目标不塌缩；维度 2048）
 
 ---
 
 ## 后续阶段 2b / 2c 待办（脚手架缺口）
 
-按 `docs/rltoken_plan.md` §2.4 + §5.2，2b/2c 需新增/扩展以下模块，本次阶段未触及：
+按 `docs/rltoken_plan.md` §2.4 + §5.2，2b/2c 的核心代码已迁移进 `src/lerobot/rltoken/`。当前剩余待办是运行验证和性能精修：
 
-- `src/lerobot/rl/buffer.py` —— 扩展 `action_chunk_size` 字段或新写 `ChunkedReplayBuffer`，存储宏动作 transition
-- `src/lerobot/rl/learner.py` —— 现仅 SAC，需新增 TD3：双 Q + Polyak 软更新 + 块级 Bellman 累加 $y = \sum_{i=0}^{C-1} \gamma^i r_{t+i} + \gamma^C \min_j Q'_{\theta_j}(s_{t+C}, a')$
-- `src/lerobot/rl/actor.py` —— 现仅 HILSerl gamepad，需新增 `RLTokenActor`：调用阶段二a checkpoint 抽 `z_rl`，参考动作 50% dropout，残差末层零初始化
-- `src/lerobot/envs/libero.py` —— 加块级 reward 累加 wrapper（C 步聚合一次 transition）；可选去除人类介入接口
-- `src/lerobot/rltoken/train_online.py` —— 当前为 NotImplementedError 占位，需实现 actor-critic 主循环
-- 演示预填脚本 —— 用 HF Hub `lerobot/libero` 演示填充 replay buffer 作为 warmup
+- 跑通单任务 Stage 1：`bash dev.sh train_token --dataset.task_index=0 --steps=5000`
+- 跑通单任务 Stage 2 smoke：`bash dev.sh train_online --task_index=0 --rl_token_checkpoint=<stage1_ckpt> --warmup_steps=2 --max_env_steps=20`
+- 如 Critic 不收敛，优先检查 reward 稀疏度、action 后处理尺度、`z_rl + proprio` 状态归一化
+- 演示预填 replay buffer 当前用 VLA-only 在线 warmup；后续可补离线 demo 预填以减少仿真 warmup 成本
 
 ---
 

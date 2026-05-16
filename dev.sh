@@ -17,7 +17,8 @@ Usage: dev.sh <command> [options]
 Commands:
   eval_baseline    [options]              跑 pi05_libero 在 LIBERO 上的 SFT 基线（成功率 + 步数分布）
   train_token      [options]              阶段一：RL Token 编码器-解码器离线训练
-  train_online     [options]              阶段二：冻结编码器，TD3 actor-critic 在线训练
+  train_online     --rl_token_checkpoint PATH [options]
+                                           阶段二：冻结编码器，TD3 actor-critic 在线训练
   eval_throughput  --ckpt PATH [options]  评估吞吐率（平均步数 / 吞吐率 / 成功率）
 
 环境变量：

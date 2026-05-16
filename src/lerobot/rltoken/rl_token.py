@@ -1,11 +1,9 @@
-"""RL Token 编码器-解码器 + VLM 嵌入提取。
+"""RL Token encoder-decoder and π0.5 visual embedding extraction.
 
-设计：见 ``docs/rltoken_plan.md`` §2.3。
-
-- 编码器：M 个 2048D 词元 → 单个 256D ``z_rl``（CLS-pooling Transformer）
-- 解码器：``z_rl`` → 重建 M 个 2048D 词元（learnable queries + cross-attention）
-- ``extract_vlm_embeddings(policy, batch)``：跑 π0.5 prefix forward，截取 paligemma 最后一层
-  ``last_hidden_state``（shape ``(B, M, vlm_hidden_dim)``）。冻结主干，no_grad。
+The encoder/decoder mirrors the rlt-openpi Stage 1 implementation. The
+LeRobot-specific delta is ``extract_vlm_embeddings``: per V3 plan §2.3.1,
+per-task training drops the fixed language tokens and trains on visual prefix
+embeddings only.
 """
 
 from __future__ import annotations
@@ -18,110 +16,195 @@ from torch import Tensor, nn
 if TYPE_CHECKING:
     from lerobot.policies.pi05.modeling_pi05 import PI05Policy
 
-VLM_HIDDEN_DIM = 2048  # gemma_2b width — see PI05Pytorch.__init__ paligemma_config.width
+VLM_HIDDEN_DIM = 2048
 
 
 class RLTokenEncoder(nn.Module):
-    """Compress VLM embeddings ``z_{1:M} (B, M, d_vlm)`` into a single bottleneck ``z_rl (B, z_dim)``.
+    """Encode VLA visual embeddings into a single RL token.
 
-    Architecture: project ``d_vlm → d_model``, concat a learnable CLS token, run ``n_layers``
-    Transformer encoder layers, take the CLS slot, project ``d_model → z_dim``. The CLS pooling
-    is equivalent to cross-attention from a single query into the M tokens (n_layers=2 is enough
-    given the input is already strongly contextualized by paligemma).
+    Args:
+        embedding_dim: VLA hidden width. For π0.5 Gemma-2B this is 2048.
+        num_layers: Number of transformer encoder layers.
+        num_heads: Number of attention heads.
     """
 
     def __init__(
         self,
-        vlm_hidden_dim: int = VLM_HIDDEN_DIM,
-        z_dim: int = 256,
-        d_model: int = 256,
-        n_layers: int = 2,
-        n_heads: int = 8,
-        dropout: float = 0.0,
-    ):
+        embedding_dim: int = VLM_HIDDEN_DIM,
+        num_layers: int = 2,
+        num_heads: int = 8,
+    ) -> None:
         super().__init__()
-        self.input_proj = nn.Linear(vlm_hidden_dim, d_model)
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-        nn.init.normal_(self.cls_token, std=0.02)
-        layer = nn.TransformerEncoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
+        self.e_rl = nn.Parameter(torch.randn(1, 1, embedding_dim) * 0.02)
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=embedding_dim,
+            nhead=num_heads,
+            dim_feedforward=4 * embedding_dim,
             batch_first=True,
             norm_first=True,
             activation="gelu",
         )
-        self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
-        self.output_proj = nn.Linear(d_model, z_dim)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
-    def forward(self, z_tokens: Tensor, key_padding_mask: Tensor | None = None) -> Tensor:
-        """``z_tokens``: ``(B, M, vlm_hidden_dim)``. ``key_padding_mask``: ``(B, M)`` bool, True = pad."""
-        b = z_tokens.shape[0]
-        h = self.input_proj(z_tokens)
-        cls = self.cls_token.expand(b, -1, -1)
-        h = torch.cat([cls, h], dim=1)
-        if key_padding_mask is not None:
-            cls_pad = torch.zeros(b, 1, dtype=key_padding_mask.dtype, device=key_padding_mask.device)
-            key_padding_mask = torch.cat([cls_pad, key_padding_mask], dim=1)
-        h = self.encoder(h, src_key_padding_mask=key_padding_mask)
-        return self.output_proj(h[:, 0])
+    def forward(self, z: Tensor, pad_mask: Tensor) -> Tensor:
+        """Encode embeddings into ``z_rl``.
+
+        Args:
+            z: Visual VLA embeddings, shape ``[B, M, D]``.
+            pad_mask: Boolean mask, shape ``[B, M]``. True means valid token.
+
+        Returns:
+            RL token, shape ``[B, D]``.
+        """
+        batch_size = z.shape[0]
+        e_rl = self.e_rl.expand(batch_size, -1, -1)
+        tokens = torch.cat([z, e_rl], dim=1)  # [B, M + 1, D]
+
+        rl_mask = torch.ones(batch_size, 1, dtype=torch.bool, device=z.device)
+        extended_pad_mask = torch.cat([pad_mask.bool(), rl_mask], dim=1)  # [B, M + 1]
+        ignore_mask = ~extended_pad_mask
+
+        out = self.transformer(tokens, src_key_padding_mask=ignore_mask)
+        return out[:, -1, :]  # [B, D]
 
 
 class RLTokenDecoder(nn.Module):
-    """Reconstruct ``z_{1:M}`` from ``z_rl``.
+    """Reconstruct visual VLA embeddings from ``z_rl``.
 
-    Architecture: learnable query embedding of length ``max_seq_len`` at ``d_model`` width, run
-    ``n_layers`` Transformer decoder layers with cross-attention into a single memory slot that
-    holds the projected ``z_rl``, project ``d_model → d_vlm``. Only the first ``M`` outputs (for
-    the actual sequence length) are used in the reconstruction loss.
+    The decoder uses teacher-forced autoregression: target input is
+    ``[z_rl, z_1, ..., z_{M-1}]`` and output position ``i`` predicts ``z_i``.
+
+    Args:
+        embedding_dim: VLA hidden width.
+        num_layers: Number of transformer decoder layers.
+        num_heads: Number of attention heads.
     """
 
     def __init__(
         self,
-        vlm_hidden_dim: int = VLM_HIDDEN_DIM,
-        z_dim: int = 256,
-        d_model: int = 256,
-        n_layers: int = 2,
-        n_heads: int = 8,
-        max_seq_len: int = 512,
-        dropout: float = 0.0,
-    ):
+        embedding_dim: int = VLM_HIDDEN_DIM,
+        num_layers: int = 2,
+        num_heads: int = 8,
+    ) -> None:
         super().__init__()
-        self.max_seq_len = max_seq_len
-        self.query_embed = nn.Parameter(torch.zeros(1, max_seq_len, d_model))
-        nn.init.normal_(self.query_embed, std=0.02)
-        self.memory_proj = nn.Linear(z_dim, d_model)
-        layer = nn.TransformerDecoderLayer(
-            d_model=d_model,
-            nhead=n_heads,
-            dim_feedforward=d_model * 4,
-            dropout=dropout,
+        decoder_layer = nn.TransformerDecoderLayer(
+            d_model=embedding_dim,
+            nhead=num_heads,
+            dim_feedforward=4 * embedding_dim,
             batch_first=True,
             norm_first=True,
             activation="gelu",
         )
-        self.decoder = nn.TransformerDecoder(layer, num_layers=n_layers)
-        self.output_proj = nn.Linear(d_model, vlm_hidden_dim)
+        self.transformer = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
+        self.h_phi = nn.Linear(embedding_dim, embedding_dim)
 
-    def forward(self, z_rl: Tensor, seq_len: int) -> Tensor:
-        """``z_rl``: ``(B, z_dim)``. Returns ``(B, seq_len, vlm_hidden_dim)``."""
-        if seq_len > self.max_seq_len:
-            raise ValueError(f"seq_len {seq_len} exceeds decoder max_seq_len {self.max_seq_len}")
-        b = z_rl.shape[0]
-        queries = self.query_embed[:, :seq_len].expand(b, -1, -1)
-        memory = self.memory_proj(z_rl).unsqueeze(1)  # (B, 1, d_model)
-        h = self.decoder(queries, memory)
-        return self.output_proj(h)
+    def forward(self, z_rl: Tensor, z: Tensor, pad_mask: Tensor) -> Tensor:
+        """Reconstruct embeddings from an RL token.
+
+        Args:
+            z_rl: RL token, shape ``[B, D]``.
+            z: Original visual VLA embeddings, shape ``[B, M, D]``.
+            pad_mask: Boolean mask, shape ``[B, M]``. True means valid token.
+
+        Returns:
+            Reconstructed embeddings, shape ``[B, M, D]``.
+        """
+        tgt = torch.cat([z_rl.unsqueeze(1), z[:, :-1, :]], dim=1)  # [B, M, D]
+        seq_len = tgt.shape[1]
+        causal_mask = torch.triu(
+            torch.ones(seq_len, seq_len, dtype=torch.bool, device=tgt.device),
+            diagonal=1,
+        )
+        memory = z_rl.unsqueeze(1)  # [B, 1, D]
+
+        out = self.transformer(
+            tgt,
+            memory,
+            tgt_mask=causal_mask,
+            tgt_key_padding_mask=~pad_mask.bool(),
+        )
+        return self.h_phi(out)  # [B, M, D]
+
+
+class RLTokenModel(nn.Module):
+    """Combined RL token encoder-decoder for Stage 1 training.
+
+    Args:
+        embedding_dim: VLA hidden width.
+        encoder_layers: Number of encoder transformer layers.
+        encoder_heads: Number of encoder attention heads.
+        decoder_layers: Number of decoder transformer layers.
+        decoder_heads: Number of decoder attention heads.
+    """
+
+    def __init__(
+        self,
+        embedding_dim: int = VLM_HIDDEN_DIM,
+        encoder_layers: int = 2,
+        encoder_heads: int = 8,
+        decoder_layers: int = 2,
+        decoder_heads: int = 8,
+    ) -> None:
+        super().__init__()
+        self.embedding_dim = embedding_dim
+        self.encoder_layers = encoder_layers
+        self.encoder_heads = encoder_heads
+        self.decoder_layers = decoder_layers
+        self.decoder_heads = decoder_heads
+        self.encoder = RLTokenEncoder(embedding_dim, encoder_layers, encoder_heads)
+        self.decoder = RLTokenDecoder(embedding_dim, decoder_layers, decoder_heads)
+
+    def forward(self, z: Tensor, pad_mask: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+        """Encode, decode, and compute masked reconstruction loss.
+
+        Args:
+            z: Visual VLA embeddings, shape ``[B, M, D]``.
+            pad_mask: Boolean mask, shape ``[B, M]``. True means valid token.
+
+        Returns:
+            ``(loss, z_rl, z_hat)`` where loss is scalar, ``z_rl`` is
+            ``[B, D]``, and ``z_hat`` is ``[B, M, D]``.
+        """
+        z = z.detach()
+        pad_mask = pad_mask.bool()
+
+        z_rl = self.encoder(z, pad_mask)
+        z_hat = self.decoder(z_rl, z, pad_mask)
+
+        mse = (z_hat - z).pow(2).mean(dim=-1)  # [B, M]
+        mask = pad_mask.to(mse.dtype)
+        loss = (mse * mask).sum() / mask.sum().clamp_min(1.0)
+        return loss, z_rl, z_hat
+
+    @torch.no_grad()
+    def encode(self, z: Tensor, pad_mask: Tensor) -> Tensor:
+        """Extract ``z_rl`` for inference.
+
+        Args:
+            z: Visual VLA embeddings, shape ``[B, M, D]``.
+            pad_mask: Boolean mask, shape ``[B, M]``. True means valid token.
+
+        Returns:
+            RL token, shape ``[B, D]``.
+        """
+        return self.encoder(z, pad_mask.bool())
 
 
 @torch.no_grad()
 def extract_vlm_embeddings(policy: PI05Policy, batch: dict[str, Tensor]) -> tuple[Tensor, Tensor]:
-    """Run π0.5's prefix forward and return ``last_hidden_state`` from the paligemma language model.
+    """Run π0.5 prefix forward and return image-only hidden states.
 
-    Returns ``(z_tokens, pad_mask)``:
-      - ``z_tokens``: ``(B, M, VLM_HIDDEN_DIM)`` — the $z_{1:M}$ from plan §2.3
-      - ``pad_mask``: ``(B, M)`` bool, True where the position is real (non-padding)
+    ``PI05Pytorch.embed_prefix`` lays tokens out as image patches followed by
+    language tokens. Per-task RL Token training keeps the instruction fixed, so
+    the language suffix is removed before training the encoder.
+
+    Args:
+        policy: Frozen π0.5 policy in eval mode.
+        batch: Preprocessed LeRobot batch containing images and language tokens.
+
+    Returns:
+        ``(z_vis, pad_vis)`` where ``z_vis`` is ``[B, M_vis, 2048]`` and
+        ``pad_vis`` is ``[B, M_vis]`` with True for valid visual tokens.
     """
     from lerobot.policies.pi05.modeling_pi05 import (
         OBS_LANGUAGE_ATTENTION_MASK,
@@ -138,6 +221,14 @@ def extract_vlm_embeddings(policy: PI05Policy, batch: dict[str, Tensor]) -> tupl
     prefix_embs, prefix_pad_masks, prefix_att_masks = pi05_model.embed_prefix(
         images, img_masks, tokens, masks
     )
+    num_lang_tokens = tokens.shape[1]
+    num_visual_tokens = prefix_embs.shape[1] - num_lang_tokens
+    if num_visual_tokens <= 0:
+        raise ValueError(
+            f"Expected at least one visual token, got prefix_len={prefix_embs.shape[1]} "
+            f"and language_len={num_lang_tokens}."
+        )
+
     prefix_att_2d_masks = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
     position_ids = torch.cumsum(prefix_pad_masks, dim=1) - 1
     attn_4d = pi05_model._prepare_attention_masks_4d(prefix_att_2d_masks)  # noqa: SLF001
@@ -149,11 +240,7 @@ def extract_vlm_embeddings(policy: PI05Policy, batch: dict[str, Tensor]) -> tupl
         inputs_embeds=[prefix_embs, None],
         use_cache=False,
     )
-    return prefix_output.detach().to(torch.float32), prefix_pad_masks.detach()
 
-
-def reconstruction_loss(z_tokens: Tensor, z_hat: Tensor, pad_mask: Tensor) -> Tensor:
-    """Masked MSE: ``L_ro = E_{i: pad_mask_i=1} || z_hat_i - sg(z_i) ||^2``."""
-    err = (z_hat - z_tokens.detach()).pow(2).mean(dim=-1)  # (B, M)
-    mask = pad_mask.to(err.dtype)
-    return (err * mask).sum() / mask.sum().clamp_min(1.0)
+    z_vis = prefix_output[:, :num_visual_tokens, :].detach().to(torch.float32)  # [B, M_vis, D]
+    pad_vis = prefix_pad_masks[:, :num_visual_tokens].detach().bool()  # [B, M_vis]
+    return z_vis, pad_vis
