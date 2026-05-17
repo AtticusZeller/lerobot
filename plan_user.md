@@ -12,7 +12,7 @@ git branch --show-current
 CMAKE_POLICY_VERSION_MINIMUM=3.5 uv sync --extra "pi" --extra "test" --extra "libero"
 ```
 
-确认本机已有 MuJoCo/EGL 环境、`lerobot/pi05_libero_finetuned` 权重访问权限、`lerobot/libero` 数据集缓存或 HuggingFace 网络访问。如 `egl-probe` 构建失败，详见 `docs/bug.md`。
+确认本机已有 MuJoCo/EGL 环境、`lerobot/pi05_libero_finetuned` 权重访问权限、`HuggingFaceVLA/libero` 数据集缓存或 HuggingFace 网络访问。如 `egl-probe` 构建失败，详见 `docs/bug.md`。
 
 ## 1. 单任务 SFT baseline
 
@@ -64,30 +64,42 @@ LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline \
 先跑 20 步烟雾测试：
 
 ```bash
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
 LIBERO_SUITE=libero_spatial bash dev.sh train_token \
   --dataset.task_index=0 \
   --steps=20
 ```
 
+> `LEROBOT_OUTPUT_ROOT` 现在对所有 `dev.sh` 子命令生效（详见 CLAUDE.md / AGENTS.md "输出路径约定"）。AutoDL 上别忘了带上，否则 checkpoint 落在系统盘。
+
 烟雾测试通过后跑正式 5000 步：
 
 ```bash
+LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
 LIBERO_SUITE=libero_spatial bash dev.sh train_token \
   --dataset.task_index=0 \
   --steps=5000
 ```
 
+显存约束：32GB GPU 上 `batch_size=32` 会 OOM（峰值 ~31GB），当前 `experiments/rltoken_pi05_libero.yaml` 默认 `dataset.batch_size=16`（~24GB），loss 仍稳定下降。改回 32 需 ≥40GB 显存或开 `PYTORCH_ALLOC_CONF=expandable_segments:True` 并接受首步附近 OOM 风险。
+
 期望 checkpoint：
 
 ```text
-outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors
+<LEROBOT_OUTPUT_ROOT>/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors
 ```
 
-记录到 `docs/plan.md`：
+已验证结果（`2026-05-17`，`libero_spatial task 0`，5000 step，batch=16，单 32GB GPU）：
 
-- `L_ro` 初始值、末段平台值
-- checkpoint 实际路径
-- wandb run id（如果启用）
+| 项 | 值 |
+|---|---|
+| L_ro 起点（step 1） | 2.21 |
+| L_ro 末段 EMA（step 5000） | 0.291 |
+| 1k / 2k / 3k / 4k / 5k EMA | 0.513 / 0.425 / 0.371 / 0.324 / 0.291 |
+| wandb run | `rltoken-pi05-libero/quiet-valley-7` (id `uo9fkt4p`) |
+| 训练用时 | ~1h15min（含 ~3min 冷启动） |
+
+结论：Stage 1 task 0 已验证收敛，可进入阶段二 smoke。L_ro 0.29 已接近 512:1 压缩下的重构 floor，单 L_ro 不再是后续 Stage 2 是否能学的判据 —— actor/critic 收敛是硬证据。
 
 ## 3. 阶段二：task 0 在线 TD3 smoke
 
@@ -96,7 +108,7 @@ outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors
 ```bash
 LIBERO_SUITE=libero_spatial bash dev.sh train_online \
   --task_index=0 \
-  --rl_token_checkpoint=outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors \
+  --rl_token_checkpoint=/root/autodl-tmp/outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors \
   --warmup_steps=2 \
   --max_env_steps=20
 ```
@@ -117,7 +129,7 @@ smoke 通过后再扩大训练预算：
 ```bash
 LIBERO_SUITE=libero_spatial bash dev.sh train_online \
   --task_index=0 \
-  --rl_token_checkpoint=outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors \
+  --rl_token_checkpoint=/root/autodl-tmp/outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors \
   --warmup_steps=1000 \
   --max_env_steps=20000
 ```
@@ -131,15 +143,18 @@ LIBERO_SUITE=libero_spatial bash dev.sh train_online \
 
 ## 5. 扩展到 LIBERO-Spatial 10 个 task
 
-task 0 跑通后再批量训练 Stage 1：
+task 0 + Stage 2 跑通后再批量训练 Stage 1。注意以下 for 循环每 task 重启进程 → 每次 ~3min 冷启（数据扫描 + π0.5 加载），10 task 仅启动就要浪费 ~30min，可接受但不优雅：
 
 ```bash
 for t in 0 1 2 3 4 5 6 7 8 9; do
+  LEROBOT_OUTPUT_ROOT=/root/autodl-tmp/outputs \
   LIBERO_SUITE=libero_spatial bash dev.sh train_token \
     --dataset.task_index=$t \
     --steps=5000
 done
 ```
+
+若 task 0 路径都通顺，后续优化方向是**预编码 z_vis 离线缓存**（rlt-openpi 论文思路）：跑一次 `encode_libero_task.py` 把 π0.5 的视觉 hidden state 落 safetensors，`train_token` 走快路径直接读张量，避免每个 task 重新加载 π0.5。这是后置优化，先把 task 0 的 Stage 2 算法链路跑稳再说。
 
 Stage 2 仍建议逐个 task 启动，不要一开始并发，以便定位环境和策略问题。
 
@@ -148,4 +163,4 @@ Stage 2 仍建议逐个 task 启动，不要一开始并发，以便定位环境
 - Stage 1 已迁移为 rlt-openpi 风格 `RLTokenModel`，`z_rl` 为 2048D，训练时剥离语言 token。
 - Stage 2 已迁移 rlt-openpi 的 Actor / TwinQCritic / ReplayBuffer / TD3 更新 / RolloutWorker / OnlineTrainer。
 - LeRobot 适配层为 `src/lerobot/rltoken/adapter.py` 和 `src/lerobot/rltoken/libero_chunk_env.py`。
-- 当前优先级是跑通 task 0 的真实 LIBERO 环境闭环，而不是继续扩展新功能。
+- 当前优先级是跑通 task 0 的 Stage 2 smoke / 正式训练，而不是继续扩展新功能。

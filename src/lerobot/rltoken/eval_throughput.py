@@ -5,8 +5,6 @@
 只是在多个 suite 上各跑一遍并按 suite 汇总结果。
 """
 
-from __future__ import annotations
-
 import csv
 import json
 import logging

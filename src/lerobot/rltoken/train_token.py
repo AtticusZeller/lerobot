@@ -1,7 +1,5 @@
 """Stage 1: train the RL Token encoder-decoder on LIBERO demos."""
 
-from __future__ import annotations
-
 import logging
 import sys
 import time
@@ -22,7 +20,9 @@ from torch.utils.data import DataLoader
 from lerobot.configs.policies import PreTrainedConfig
 from lerobot.datasets.dataset_metadata import LeRobotDatasetMetadata
 from lerobot.datasets.lerobot_dataset import LeRobotDataset
+from lerobot.envs.libero import _get_suite
 from lerobot.policies.factory import make_policy, make_pre_post_processors
+from lerobot.rltoken.dataset_repair import repair_episodes_metadata
 from lerobot.rltoken.rl_token import VLM_HIDDEN_DIM, RLTokenModel, extract_vlm_embeddings
 from lerobot.utils.device_utils import get_safe_torch_device
 from lerobot.utils.import_utils import register_third_party_plugins
@@ -32,7 +32,7 @@ from lerobot.utils.utils import init_logging
 
 @dataclass
 class DatasetCfg:
-    repo_id: str = "lerobot/libero"
+    repo_id: str = "HuggingFaceVLA/libero"
     batch_size: int = 32
     num_workers: int = 4
     episodes: list[int] | None = None
@@ -135,39 +135,51 @@ def _task_name_for_index(tasks, task_index: int) -> str:
     return str(tasks.iloc[task_index].name)
 
 
-def _episode_index(episode: dict[str, Any], fallback: int) -> int:
-    return int(episode.get("episode_index", fallback))
+def _resolve_dataset_task(meta: LeRobotDatasetMetadata, suite: str | None, task_index: int) -> tuple[int, str]:
+    if suite is None:
+        task_name = _task_name_for_index(meta.tasks, task_index)
+        return task_index, task_name
+
+    suite_obj = _get_suite(suite)
+    suite_tasks = getattr(suite_obj, "tasks", None)
+    if suite_tasks is None or task_index < 0 or task_index >= len(suite_tasks):
+        raise ValueError(f"task_index {task_index} out of range for suite {suite!r}.")
+
+    task_name = str(suite_obj.get_task(task_index).language)
+    dataset_task_index = meta.get_task_index(task_name)
+    if dataset_task_index is None:
+        raise ValueError(f"Task {task_name!r} from suite {suite!r} not found in dataset {meta.repo_id!r}.")
+    return dataset_task_index, task_name
 
 
-def _episode_matches_task(episode: dict[str, Any], task_index: int, task_name: str) -> bool:
-    if "task_index" in episode:
-        value = episode["task_index"]
-        if isinstance(value, Tensor):
-            value = value.item()
-        return int(value) == task_index
-
-    episode_tasks = episode.get("tasks", [])
-    if isinstance(episode_tasks, str):
-        episode_tasks = [episode_tasks]
-    return task_name in episode_tasks
+def _episodes_for_task(meta: LeRobotDatasetMetadata, task_name: str) -> list[int]:
+    task_episodes: list[int] = []
+    for ep_idx, episode in enumerate(meta.episodes):
+        episode_tasks = episode.get("tasks", [])
+        if isinstance(episode_tasks, str):
+            episode_tasks = [episode_tasks]
+        if task_name in episode_tasks:
+            task_episodes.append(int(episode.get("episode_index", ep_idx)))
+    return task_episodes
 
 
-def _resolve_episode_filter(ds_cfg: DatasetCfg) -> tuple[list[int] | None, str | None]:
+def _resolve_episode_filter(ds_cfg: DatasetCfg, suite: str | None) -> tuple[list[int] | None, str | None]:
     if ds_cfg.task_index is None:
         return ds_cfg.episodes, None
 
     meta = LeRobotDatasetMetadata(ds_cfg.repo_id)
-    task_name = _task_name_for_index(meta.tasks, ds_cfg.task_index)
-    task_episodes = [
-        _episode_index(ep, ep_idx)
-        for ep_idx, ep in enumerate(meta.episodes)
-        if _episode_matches_task(ep, ds_cfg.task_index, task_name)
-    ]
+    if repair_episodes_metadata(ds_cfg.repo_id, meta.root):
+        # Reload so meta.episodes reflects the patched parquet.
+        meta._load_metadata()
+    dataset_task_index, task_name = _resolve_dataset_task(meta, suite, ds_cfg.task_index)
+    task_episodes = _episodes_for_task(meta, task_name)
     if ds_cfg.episodes is not None:
         allowed = set(ds_cfg.episodes)
         task_episodes = [ep for ep in task_episodes if ep in allowed]
     if not task_episodes:
-        raise ValueError(f"No episodes found for task_index={ds_cfg.task_index} ({task_name!r}).")
+        raise ValueError(
+            f"No episodes found for task_index={ds_cfg.task_index} ({task_name!r}, dataset task_index={dataset_task_index})."
+        )
     return task_episodes, task_name
 
 
@@ -189,22 +201,22 @@ def _build_policy(cfg: TrainTokenConfig, ds_meta):
     return policy, policy_cfg
 
 
-def _collate_then_preprocess(items: list[dict[str, Any]], preprocessor) -> dict[str, Tensor]:
+def _collate_only(items: list[dict[str, Any]]) -> dict[str, Tensor]:
     batch: dict[str, Any] = {}
     for key in items[0]:
         values = [item[key] for item in items]
         batch[key] = torch.stack(values, dim=0) if isinstance(values[0], Tensor) else values
-    return preprocessor(batch)
+    return batch
 
 
-def _build_dataloader(ds_cfg: DatasetCfg, episodes: list[int] | None, preprocessor) -> DataLoader:
+def _build_dataloader(ds_cfg: DatasetCfg, episodes: list[int] | None) -> DataLoader:
     dataset = LeRobotDataset(ds_cfg.repo_id, episodes=episodes)
     return DataLoader(
         dataset,
         batch_size=ds_cfg.batch_size,
         shuffle=True,
         num_workers=ds_cfg.num_workers,
-        collate_fn=lambda items: _collate_then_preprocess(items, preprocessor),
+        collate_fn=_collate_only,
         drop_last=True,
         persistent_workers=ds_cfg.num_workers > 0,
     )
@@ -250,7 +262,7 @@ def main(cfg: TrainTokenConfig) -> None:
         torch.backends.cudnn.benchmark = True
         torch.backends.cuda.matmul.allow_tf32 = True
 
-    episodes, task_name = _resolve_episode_filter(cfg.dataset)
+    episodes, task_name = _resolve_episode_filter(cfg.dataset, cfg.suite)
     logging.info("Stage 1 config:\n%s", pformat(asdict(cfg)))
     if task_name is not None:
         logging.info("Training task_index=%d task=%r episodes=%d", cfg.dataset.task_index, task_name, len(episodes))
@@ -266,7 +278,7 @@ def main(cfg: TrainTokenConfig) -> None:
         dataset_stats=ds_meta.stats,
         preprocessor_overrides={"device_processor": {"device": str(device)}},
     )
-    loader = _build_dataloader(cfg.dataset, episodes, preprocessor)
+    loader = _build_dataloader(cfg.dataset, episodes)
 
     model = RLTokenModel(
         embedding_dim=cfg.rltoken.embedding_dim,
@@ -305,6 +317,7 @@ def main(cfg: TrainTokenConfig) -> None:
             data_iter = iter(loader)
             batch = next(data_iter)
 
+        batch = preprocessor(batch)
         z_vis, pad_vis = extract_vlm_embeddings(policy, batch)
         z_vis = z_vis.to(device)
         pad_vis = pad_vis.to(device)

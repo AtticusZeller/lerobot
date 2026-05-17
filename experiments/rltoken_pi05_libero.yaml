@@ -14,8 +14,8 @@ rltoken:
   decoder_heads: 8
 
 dataset:
-  repo_id: lerobot/libero
-  batch_size: 32
+  repo_id: HuggingFaceVLA/libero
+  batch_size: 16
   num_workers: 4
   task_index: null
 

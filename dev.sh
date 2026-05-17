@@ -10,6 +10,25 @@ CONFIG="${CONFIG:-experiments/rltoken_pi05_libero.yaml}"
 WANDB_PROJECT="${WANDB_PROJECT:-rltoken-pi05-libero}"
 export WANDB_PROJECT
 
+# If LEROBOT_OUTPUT_ROOT is set, redirect each command's default output dir to
+# that root (data disk on AutoDL). eval_baseline already reads it via
+# EvalPipelineConfig; the other commands take a flag, so we inject one when the
+# user hasn't passed --<flag> explicitly.
+inject_output_flag() {
+    local flag=$1
+    local subpath=$2
+    shift 2
+    if [[ -z "${LEROBOT_OUTPUT_ROOT:-}" ]]; then
+        return
+    fi
+    for arg in "$@"; do
+        case "$arg" in
+            --${flag}|--${flag}=*) return ;;
+        esac
+    done
+    printf -- '--%s=%s/%s\n' "$flag" "$LEROBOT_OUTPUT_ROOT" "$subpath"
+}
+
 usage() {
     cat <<EOF
 Usage: dev.sh <command> [options]
@@ -27,15 +46,13 @@ Commands:
   CONFIG          训练配置 yaml，默认 ${CONFIG}
   WANDB_PROJECT   W&B 项目名，默认 ${WANDB_PROJECT}
   LEROBOT_OUTPUT_ROOT
-                  输出根目录前缀；eval_baseline 未显式传 --output_dir 时，
-                  自动输出到 <前缀>/eval/<日期>/<时间>_<job_name>/
-                  默认 outputs
-
-输出目录：
-  eval_baseline   默认输出:
-                  <LEROBOT_OUTPUT_ROOT 或 outputs>/eval/<日期>/<时间>_<job_name>/
-                  显式传 --output_dir=PATH 时优先使用 PATH
-  eval_throughput 默认由其自身 --output_dir 控制；不读取 LEROBOT_OUTPUT_ROOT
+                  输出根目录前缀；未显式传 --output_dir / --save_dir 时，
+                  各子命令默认输出会改写到 <前缀>/<subpath>/...：
+                    eval_baseline   -> <前缀>/eval/<日期>/<时间>_<job_name>/   (由 EvalPipelineConfig 读取)
+                    train_token     -> <前缀>/rltoken/encoder_decoder/<suite>/task_NN/
+                    train_online    -> <前缀>/rltoken/online/<run_name>/
+                    eval_throughput -> <前缀>/baseline/
+                  显式传 --output_dir=PATH 或 --save_dir=PATH 时优先使用 PATH
 
 示例：
   LIBERO_SUITE=libero_spatial bash dev.sh eval_baseline --env.task_ids='[0]'
@@ -58,25 +75,31 @@ cmd_eval_baseline() {
 }
 
 cmd_train_token() {
+    local extra
+    extra=$(inject_output_flag output_dir rltoken/encoder_decoder "$@")
     uv run python -m lerobot.rltoken.train_token \
         --pretrained="$PI05_CKPT" \
         --suite="$LIBERO_SUITE" \
         --yaml_config="$CONFIG" \
-        "$@"
+        ${extra:+$extra} "$@"
 }
 
 cmd_train_online() {
+    local extra
+    extra=$(inject_output_flag save_dir rltoken/online "$@")
     uv run python -m lerobot.rltoken.train_online \
         --pretrained="$PI05_CKPT" \
         --suite="$LIBERO_SUITE" \
         --yaml_config="$CONFIG" \
-        "$@"
+        ${extra:+$extra} "$@"
 }
 
 cmd_eval_throughput() {
+    local extra
+    extra=$(inject_output_flag output_dir baseline "$@")
     uv run python -m lerobot.rltoken.eval_throughput \
         --suite="$LIBERO_SUITE" \
-        "$@"
+        ${extra:+$extra} "$@"
 }
 
 cmd="${1:-}"

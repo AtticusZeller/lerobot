@@ -231,7 +231,12 @@ def extract_vlm_embeddings(policy: PI05Policy, batch: dict[str, Tensor]) -> tupl
 
     prefix_att_2d_masks = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
     position_ids = torch.cumsum(prefix_pad_masks, dim=1) - 1
-    attn_4d = pi05_model._prepare_attention_masks_4d(prefix_att_2d_masks)  # noqa: SLF001
+    language_model = pi05_model.paligemma_with_expert.paligemma.model.language_model
+    language_model.config._attn_implementation = "eager"
+    model_dtype = language_model.layers[0].self_attn.q_proj.weight.dtype
+    if prefix_embs.dtype != model_dtype:
+        prefix_embs = prefix_embs.to(dtype=model_dtype)
+    attn_4d = pi05_model._prepare_attention_masks_4d(prefix_att_2d_masks).to(dtype=model_dtype)  # noqa: SLF001
 
     (prefix_output, _), _ = pi05_model.paligemma_with_expert.forward(
         attention_mask=attn_4d,

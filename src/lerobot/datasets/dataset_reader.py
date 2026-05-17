@@ -90,6 +90,11 @@ class DatasetReader:
         except (FileNotFoundError, NotADirectoryError):
             self.hf_dataset = None
             return False
+        except ValueError as exc:
+            if "corresponds to no data" not in str(exc):
+                raise
+            self.hf_dataset = None
+            return False
         if not self._check_cached_episodes_sufficient():
             self.hf_dataset = None
             return False
@@ -125,7 +130,15 @@ class DatasetReader:
     def _load_hf_dataset(self) -> datasets.Dataset:
         """hf_dataset contains all the observations, states, actions, rewards, etc."""
         features = get_hf_features_from_features(self._meta.features)
-        hf_dataset = load_nested_dataset(self.root / "data", features=features, episodes=self.episodes)
+        paths = None
+        if self.episodes is not None:
+            # Fast path: only open parquet files that actually contain the selected episodes.
+            # Avoids globbing hundreds of unrelated files when filtering down to a single task.
+            unique_rel = sorted({str(self._meta.get_data_file_path(ep)) for ep in self.episodes})
+            paths = [self.root / rel for rel in unique_rel]
+        hf_dataset = load_nested_dataset(
+            self.root / "data", features=features, episodes=self.episodes, paths=paths
+        )
         hf_dataset.set_transform(hf_transform_to_torch)
         return hf_dataset
 

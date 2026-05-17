@@ -170,7 +170,18 @@ Pre/post-processing pipeline that runs between raw observations and policy input
 
 **协作约定**：被问及 docs/ 下的文档时，优先读 `rltoken_plan.md`、`paper/` 下论文原文，进度问题读 `plan.md`。`docs/archive/so101/` 仅在用户明确询问真机历史时引用；`docs/source/` 下的 `.mdx` 参考其内容但不要修改（官方文档）。
 
-**输出路径约定**：`eval_baseline` 底层使用 `src/lerobot/configs/eval.py` 的 `EvalPipelineConfig.output_dir`。若未显式传 `--output_dir`，默认输出到 `outputs/eval/<日期>/<时间>_<job_name>/`；可通过环境变量 `LEROBOT_OUTPUT_ROOT` 改写根前缀，例如 AutoDL 上设为 `/root/autodl-tmp/outputs` 后，默认输出变为 `/root/autodl-tmp/outputs/eval/<日期>/<时间>_<job_name>/`。`eval_throughput` 仍使用其自身 `--output_dir` 参数，不读取该环境变量。
+**输出路径约定**：设 `LEROBOT_OUTPUT_ROOT=<前缀>`（AutoDL 上通常 `/root/autodl-tmp/outputs`）后，`dev.sh` 的四个子命令在用户未显式传 `--output_dir` / `--save_dir` 时都会自动落到该前缀下：
+
+| 子命令 | 默认输出（`LEROBOT_OUTPUT_ROOT` 未设） | 注入后 |
+|---|---|---|
+| `eval_baseline` | `outputs/eval/<日期>/<时间>_<job_name>/` | `<前缀>/eval/...`（由 `EvalPipelineConfig` 直接读环境变量） |
+| `train_token` | `outputs/rltoken/encoder_decoder/` | `<前缀>/rltoken/encoder_decoder/`（`dev.sh` 注入 `--output_dir`） |
+| `train_online` | `outputs/rltoken/online/` | `<前缀>/rltoken/online/`（`dev.sh` 注入 `--save_dir`） |
+| `eval_throughput` | `outputs/baseline/` | `<前缀>/baseline/`（`dev.sh` 注入 `--output_dir`） |
+
+显式传 `--output_dir=PATH` / `--save_dir=PATH` 时优先使用 PATH，不再注入。
+
+**已知上游数据 bug**：`HuggingFaceVLA/libero` v3.0 的 `meta/episodes/*.parquet` 的 `data/file_index` 列与实际数据 parquet 布局不一致（[community issue #5](https://huggingface.co/datasets/HuggingFaceVLA/libero/discussions/5)）。结果是按 `episodes=[...]` 单 task 过滤会下到错文件、`Dataset.from_parquet` 返回 0 行。修复在 `experiments/dataset_overrides/HuggingFaceVLA_libero_v3.0_episodes_fix.json`（committed 1693 项映射），运行时由 `src/lerobot/rltoken/dataset_repair.py` 在 `LeRobotDatasetMetadata` 实例化后改写本地 parquet，原文件备份为 `*.broken.bak`。新增 / 修改的 hook 已挂到 `train_token._resolve_episode_filter`；如果上游推新 revision，重跑 `scripts/generate_libero_episode_fix.py --revision <new>` 重建 JSON。
 
 ## RL Token 多分支工作流（并行设计 → 单独细查 → 精修 → 合并）
 

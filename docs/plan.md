@@ -6,7 +6,7 @@
 
 - [x] 阶段零：repo 脚手架（`rltoken` 分支 commits `b4e05f8e` + `8d7151f9`）
 - [x] 阶段一：SFT 基线 + 吞吐率基准线（`2026-05-16` 已验证 `libero_spatial task 0`，5/5 成功）
-- [ ] 阶段二a：RL Token 编码器-解码器离线训练（代码已就绪，待 task 0 训练）
+- [x] 阶段二a：RL Token 编码器-解码器离线训练（`2026-05-17` 已验证 `libero_spatial task 0`，5000 step；L_ro 2.21 → 0.29）
 - [x] 阶段二b：LIBERO env 适配（块级奖励累加 + VLA-only warmup replay）
 - [x] 阶段二c：块级 TD3 在线训练代码迁移（待 task 0 smoke / 正式训练验证）
 
@@ -87,7 +87,7 @@ raw log:
 - 编码器 $E([z^{vis}_{1:M}, e_{rl}]) \to z_{rl} \in \mathbb{R}^{2048}$（rlt-openpi TransformerEncoder，2 层）
 - 解码器 teacher-forced AR：$D(z_{rl}, z^{vis}_{1:M}) \to \hat z^{vis}_{1:M}$（rlt-openpi TransformerDecoder，2 层）
 - 损失 $L_{ro} = \mathbb{E}\|D(E(z^{vis}_{1:M})) - \text{sg}(z^{vis}_{1:M})\|_2^2$
-- 演示数据：HF Hub `lerobot/libero`（LeRobotDataset 加载）
+- 演示数据：HF Hub `HuggingFaceVLA/libero`（LeRobotDataset 加载；与 `docs/source/libero.mdx` 一致）
 - 训练粒度：per-task，4 suites × 10 tasks = 40 个 ckpt
 - 训练步数：5000 / task
 
@@ -114,12 +114,35 @@ for t in 0 1 2 3 4 5 6 7 8 9; do
 done
 ```
 
-### 产出（运行后填）
+### 产出
 
-- 检查点：`outputs/rltoken/encoder_decoder/<suite>/task_<NN>/step_005000.safetensors`
-- 训练曲线：wandb run `rltoken-pi05-libero/<id>`
-- `L_ro` 末段平台值：TBD（参考 rlt-openpi：初始 ~1.0 → 末段 < 0.1）
-- `z_rl` 验证集协方差矩阵秩：TBD（目标不塌缩；维度 2048）
+已验证运行（`2026-05-17`，`libero_spatial task 0`，5000 step）：
+
+| 项 | 值 |
+|---|---|
+| checkpoint | `outputs/rltoken/encoder_decoder/libero_spatial/task_00/step_005000.safetensors` |
+| wandb run | `rltoken-pi05-libero/quiet-valley-7` (id `uo9fkt4p`) |
+| L_ro 起点 / 终点 (EMA) | 2.21 / 0.291 |
+| L_ro 1k / 2k / 3k / 4k / 5k (EMA) | 0.513 / 0.425 / 0.371 / 0.324 / 0.291 |
+| 末段 grad norm | 0.55 |
+| `token/z_rl_norm` 末段 | 9.21 |
+| 吞吐 | 1.19 step/s |
+| 训练机器 / 用时 | 单 32GB GPU，约 1h15min |
+
+**配置偏差**：因为 batch=32 在单 GPU 会 OOM（峰值 ~31GB），实际跑用 `experiments/rltoken_pi05_libero.yaml` 里的 `dataset.batch_size=16`（GPU 占用 ~24GB）。loss 仍稳定下降，未观察到收敛差异。
+
+**关键 bug 修复（在阶段二a 落地过程中暴露）**：
+
+1. **HuggingFaceVLA/libero 上游数据 bug**：`meta/episodes/*.parquet` 的 `data/file_index` 列与实际数据 parquet 布局不一致（[community issue #5](https://huggingface.co/datasets/HuggingFaceVLA/libero/discussions/5)）。按 `episodes=[task_eps]` 过滤会下到错文件、`Dataset.from_parquet` 返回 0 行 → `ValueError: Instruction "train" corresponds to no data!`。
+   - 修复：committed JSON 映射 `experiments/dataset_overrides/HuggingFaceVLA_libero_v3.0_episodes_fix.json`（1693 项，由 `scripts/generate_libero_episode_fix.py` 扫 377 个 parquet footer 生成）
+   - 运行时 patch：`src/lerobot/rltoken/dataset_repair.py` 在 `LeRobotDatasetMetadata` 加载后改写本地 parquet，原文件备份为 `*.broken.bak`，幂等
+   - hook 调用点：`train_token._resolve_episode_filter`
+2. **π0.5 prefix-only embedding dtype / attention backend 不匹配**：`prefix_embs` 初始 fp32，但 π0.5 language model 权重是 bf16；进入 `PiGemmaModel.forward` 后 hidden states 会转 bf16，SDPA 路径要求 attention bias 与 query dtype 一致，抛 `RuntimeError: invalid dtype for bias - should match query's dtype`。
+   - 参考 `~/DevSpace/rlt-openpi/src/rlt_openpi/vla/embedding_extractor.py`
+   - 修复：只在 `src/lerobot/rltoken/rl_token.py:extract_vlm_embeddings` 的 RL Token prefix-only 路径设置 `language_model.config._attn_implementation = "eager"`，并把 `prefix_embs` / `attn_4d` 对齐到 language model `q_proj.weight.dtype`
+   - 不改 `src/lerobot/policies/pi05/` 或 `src/lerobot/policies/pi_gemma.py` 官方移植代码
+3. **LeRobot dataset 单 task 加载慢**：`Dataset.from_parquet` 默认 glob 全部 377 文件。改 `src/lerobot/datasets/io_utils.py:load_nested_dataset` 接受 `paths` 参数，由 `DatasetReader._load_hf_dataset` 用 `meta.get_data_file_path()` 算出实际涉及的 ~10 个文件传入，跳过全 glob。
+4. **`LEROBOT_OUTPUT_ROOT` 之前只对 eval_baseline 生效**：现在 `dev.sh` 在用户没传 `--output_dir` / `--save_dir` 时给 train_token / train_online / eval_throughput 都注入。详见 CLAUDE.md / AGENTS.md "输出路径约定"。
 
 ---
 
@@ -127,7 +150,7 @@ done
 
 按 `docs/rltoken_plan.md` §2.4 + §5.2，2b/2c 的核心代码已迁移进 `src/lerobot/rltoken/`。当前剩余待办是运行验证和性能精修：
 
-- 跑通单任务 Stage 1：`bash dev.sh train_token --dataset.task_index=0 --steps=5000`
+- 已跑通单任务 Stage 1：`bash dev.sh train_token --dataset.task_index=0 --steps=5000`
 - 跑通单任务 Stage 2 smoke：`bash dev.sh train_online --task_index=0 --rl_token_checkpoint=<stage1_ckpt> --warmup_steps=2 --max_env_steps=20`
 - 如 Critic 不收敛，优先检查 reward 稀疏度、action 后处理尺度、`z_rl + proprio` 状态归一化
 - 演示预填 replay buffer 当前用 VLA-only 在线 warmup；后续可补离线 demo 预填以减少仿真 warmup 成本

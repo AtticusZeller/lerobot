@@ -60,18 +60,25 @@ def get_hf_dataset_size_in_mb(hf_ds: Dataset) -> int:
 
 
 def load_nested_dataset(
-    pq_dir: Path, features: datasets.Features | None = None, episodes: list[int] | None = None
+    pq_dir: Path,
+    features: datasets.Features | None = None,
+    episodes: list[int] | None = None,
+    paths: list[Path] | None = None,
 ) -> Dataset:
     """Find parquet files in provided directory {pq_dir}/chunk-xxx/file-xxx.parquet
     Convert parquet files to pyarrow memory mapped in a cache folder for efficient RAM usage
     Concatenate all pyarrow references to return HF Dataset format
 
     Args:
-        pq_dir: Directory containing parquet files
+        pq_dir: Directory containing parquet files. Ignored when ``paths`` is provided.
         features: Optional features schema to ensure consistent loading of complex types like images
         episodes: Optional list of episode indices to filter. Uses PyArrow predicate pushdown for efficiency.
+        paths: Optional explicit list of parquet files. When provided, ``pq_dir`` is not globbed —
+            lets callers avoid scanning hundreds of unrelated files when they already know which
+            files contain the requested episodes.
     """
-    paths = sorted(pq_dir.glob("*/*.parquet"))
+    if paths is None:
+        paths = sorted(pq_dir.glob("*/*.parquet"))
     if len(paths) == 0:
         raise FileNotFoundError(f"Provided directory does not contain any parquet file: {pq_dir}")
 

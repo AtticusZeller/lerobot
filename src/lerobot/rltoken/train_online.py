@@ -1,7 +1,5 @@
 """Stage 2: online chunk-level TD3 with frozen π0.5 and RL Token."""
 
-from __future__ import annotations
-
 import logging
 import sys
 from dataclasses import asdict, dataclass
@@ -35,7 +33,7 @@ class TrainOnlineConfig(OnlineRLConfig):
     task_index: int = 0
     rl_token_checkpoint: str = ""
     resume_checkpoint: str = ""
-    dataset_repo_id: str = "lerobot/libero"
+    dataset_repo_id: str = "HuggingFaceVLA/libero"
     episode_length: int | None = None
     init_states: bool = True
     camera_name: str = "agentview_image,robot0_eye_in_hand_image"
